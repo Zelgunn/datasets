@@ -34,11 +34,8 @@ class AvenueTFRB(TFRecordBuilder):
 
         def load_labels(path):
             mat_contents = sio.loadmat(path)
-            if "vol" in mat_contents:
-                mat_labels = mat_contents["vol"]
-            else:
-                mat_labels = mat_contents["volLabel"]
-            mat_labels = np.concatenate(mat_labels[0], axis=0)
+            mat_labels = mat_contents["volLabel"]
+            mat_labels = np.stack(mat_labels[0], axis=0)
             return mat_labels
 
         for subset in subsets_lengths:
@@ -46,11 +43,16 @@ class AvenueTFRB(TFRecordBuilder):
             for i in range(subsets_lengths[subset]):
                 target_path = to_path("{target}/{index:02d}").format(target=subsets_targets[subset], index=i + 1)
                 video_path = to_path("{subset}_videos/{index:02d}.avi".format(subset=subset, index=i + 1))
-                labels_path = to_path("{subset}_vol/vol{index:02d}.mat".format(subset=subset, index=i + 1))
+
+                if subsets_targets[subset] == "Test":
+                    labels_path = to_path("ground_truth_demo/testing_label_mask/{index}_label.mat"
+                                          .format(subset=subset, index=i + 1))
+                    labels = load_labels(labels_path)
+                else:
+                    labels = False
 
                 if not os.path.exists(target_path):
                     os.makedirs(target_path)
-                labels = load_labels(labels_path)
 
                 sample_data = (target_path, video_path, labels)
                 subset_data.append(sample_data)
