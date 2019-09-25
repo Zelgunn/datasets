@@ -13,6 +13,7 @@ class UCSDTFRecordBuilder(TFRecordBuilder):
                  video_frequency: Optional[Union[int, float]],
                  modalities: ModalityCollection,
                  video_frame_size: Tuple[int, int],
+                 video_buffer_frame_size: Tuple[int, int],
                  verbose=1):
         super(UCSDTFRecordBuilder, self).__init__(dataset_path=dataset_path,
                                                   shard_duration=shard_duration,
@@ -20,10 +21,11 @@ class UCSDTFRecordBuilder(TFRecordBuilder):
                                                   audio_frequency=None,
                                                   modalities=modalities,
                                                   labels_frequency=video_frequency,
+                                                  video_buffer_frame_size=video_buffer_frame_size,
                                                   verbose=verbose)
         self.video_frame_size = video_frame_size
 
-    def get_dataset_sources(self) -> List[DataSource]:
+    def get_data_sources(self) -> List[DataSource]:
         subsets_lengths = {"Test": 12, "Train": 16}
         subsets = {}
         for subset in subsets_lengths:

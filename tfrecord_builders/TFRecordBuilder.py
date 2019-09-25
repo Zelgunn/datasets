@@ -58,11 +58,11 @@ class TFRecordBuilder(object):
         self.video_buffer_frame_size = video_buffer_frame_size
         self.verbose = verbose
 
-    def get_dataset_sources(self) -> List[DataSource]:
+    def get_data_sources(self) -> List[DataSource]:
         raise NotImplementedError("`get_dataset_sources` should be defined for subclasses.")
 
     def build(self, core_count=6):
-        data_sources = self.get_dataset_sources()
+        data_sources = self.get_data_sources()
 
         subsets_dict: Dict[str, Union[List[str], Dict]] = {}
 

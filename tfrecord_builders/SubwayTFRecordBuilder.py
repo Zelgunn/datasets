@@ -14,16 +14,18 @@ class SubwayTFRecordBuilder(TFRecordBuilder):
                  audio_frequency: Optional[Union[int, float]],
                  modalities: ModalityCollection,
                  video_frame_size: Tuple[int, int],
+                 video_buffer_frame_size: Tuple[int, int],
                  verbose=1):
         super(SubwayTFRecordBuilder, self).__init__(dataset_path=dataset_path,
                                                     shard_duration=shard_duration,
                                                     video_frequency=video_frequency,
                                                     audio_frequency=audio_frequency,
                                                     modalities=modalities,
+                                                    video_buffer_frame_size=video_buffer_frame_size,
                                                     verbose=verbose)
         self.video_frame_size = video_frame_size
 
-    def get_dataset_sources(self) -> List[DataSource]:
+    def get_data_sources(self) -> List[DataSource]:
         video_filename = "Subway_Exit.avi"
         video_filepath = os.path.join(self.dataset_path, video_filename)
         fps = 25.0
@@ -68,6 +70,7 @@ if __name__ == "__main__":
                                                              RawVideo(),
                                                          ]
                                                      ),
-                                                     video_frame_size=(128, 128)
+                                                     video_frame_size=(256, 256),
+                                                     video_buffer_frame_size=(256, 256)
                                                      )
     subway_tf_record_builder.build()

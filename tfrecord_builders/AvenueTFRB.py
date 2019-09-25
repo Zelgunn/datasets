@@ -14,6 +14,7 @@ class AvenueTFRB(TFRecordBuilder):
                  video_frequency: Optional[Union[int, float]],
                  modalities: ModalityCollection,
                  video_frame_size: Tuple[int, int],
+                 video_buffer_frame_size: Tuple[int, int],
                  verbose=1):
         super(AvenueTFRB, self).__init__(dataset_path=dataset_path,
                                          shard_duration=shard_duration,
@@ -21,10 +22,11 @@ class AvenueTFRB(TFRecordBuilder):
                                          audio_frequency=None,
                                          modalities=modalities,
                                          labels_frequency=video_frequency,
+                                         video_buffer_frame_size=video_buffer_frame_size,
                                          verbose=verbose)
         self.video_frame_size = video_frame_size
 
-    def get_dataset_sources(self) -> List[DataSource]:
+    def get_data_sources(self) -> List[DataSource]:
         subsets_lengths = {"testing": 21, "training": 16}
         subsets_targets = {"testing": "Test", "training": "Train"}
         subsets = {}

@@ -27,7 +27,7 @@ class EmolyTFRecordBuilder(TFRecordBuilder):
                                                    verbose=verbose)
         self.video_frame_size = video_frame_size
 
-    def get_dataset_sources(self) -> List[DataSource]:
+    def get_data_sources(self) -> List[DataSource]:
         video_filenames = self.list_videos_filenames()
         labels = self.get_labels()
 
