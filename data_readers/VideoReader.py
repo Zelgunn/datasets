@@ -12,6 +12,23 @@ class VideoReaderMode(IntEnum):
     IMAGE_COLLECTION = 2
 
 
+class VideoReaderProto(object):
+    def __init__(self,
+                 video_source: Union[str, cv2.VideoCapture, np.ndarray, List[str]],
+                 mode: VideoReaderMode = None,
+                 start=0, end=None):
+        self.video_source = video_source
+        self.mode = mode
+        self.start = start
+        self.end = end
+
+    def to_video_reader(self) -> "VideoReader":
+        return VideoReader(video_source=self.video_source,
+                           mode=self.mode,
+                           start=self.start,
+                           end=self.end)
+
+
 class VideoReader(object):
     def __init__(self,
                  video_source: Union[str, cv2.VideoCapture, np.ndarray, List[str]],

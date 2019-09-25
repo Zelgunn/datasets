@@ -4,7 +4,7 @@ from typing import Union, List, Tuple, Any, Dict, Type, Optional
 
 from modalities import Modality, ModalityCollection, RawVideo, Faces, OpticalFlow, DoG, Landmarks
 from datasets.modality_builders import ModalityBuilder
-from datasets.data_readers import VideoReader
+from datasets.data_readers.VideoReader import VideoReader, VideoReaderProto
 
 
 class VideoBuilder(ModalityBuilder):
@@ -21,7 +21,9 @@ class VideoBuilder(ModalityBuilder):
                                            source_frequency=source_frequency,
                                            modalities=modalities)
 
-        if not isinstance(video_reader, VideoReader):
+        if isinstance(video_reader, VideoReaderProto):
+            video_reader = video_reader.to_video_reader()
+        elif not isinstance(video_reader, VideoReader):
             video_reader = VideoReader(video_reader)
         else:
             video_reader = video_reader

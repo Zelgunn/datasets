@@ -3,7 +3,7 @@ from typing import Tuple, List, Union, Optional
 
 from modalities import ModalityCollection, RawVideo
 from datasets.tfrecord_builders import TFRecordBuilder, DataSource
-from datasets.data_readers import VideoReader
+from datasets.data_readers.VideoReader import VideoReaderProto
 
 
 class SubwayTFRecordBuilder(TFRecordBuilder):
@@ -32,7 +32,7 @@ class SubwayTFRecordBuilder(TFRecordBuilder):
         training_minutes = 10.0
         training_frames = int(fps * training_minutes * 60)
 
-        train_video_reader = VideoReader(video_filepath, end=training_frames)
+        train_video_reader = VideoReaderProto(video_filepath, end=training_frames)
         train_labels = False
         train_target_path = os.path.join(self.dataset_path, "Train")
         if not os.path.isdir(train_target_path):
@@ -43,7 +43,7 @@ class SubwayTFRecordBuilder(TFRecordBuilder):
                                        video_source=train_video_reader,
                                        video_frame_size=self.video_frame_size)
 
-        test_video_reader = VideoReader(video_filepath, start=training_frames)
+        test_video_reader = VideoReaderProto(video_filepath, start=training_frames)
         test_labels = [(40880, 41160), (41400, 41700), (50410, 50710), (50980, 51250), (60160, 60940)]
         test_labels = [((start - training_frames) / fps, (end - training_frames) / fps)
                        for start, end in test_labels]

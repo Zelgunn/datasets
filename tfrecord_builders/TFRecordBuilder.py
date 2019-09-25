@@ -12,6 +12,7 @@ from modalities import Modality, ModalityCollection
 from modalities.utils import float_list_feature
 from datasets.modality_builders import ModalityBuilder, VideoBuilder, AudioBuilder, BuildersList
 from datasets.data_readers import VideoReader, AudioReader
+from datasets.data_readers.VideoReader import VideoReaderProto
 from datasets.labels_builders import LabelsBuilder
 
 
@@ -20,7 +21,7 @@ class DataSource(object):
                  labels_source: Union[str, np.ndarray, List[str], bool, int, float, List[Tuple[float, float]]],
                  target_path: str,
                  subset_name: str,
-                 video_source: Union[VideoReader, str, cv2.VideoCapture, np.ndarray, List[str]] = None,
+                 video_source: Union[str, np.ndarray, List[str], VideoReaderProto] = None,
                  video_frame_size: Tuple[int, int] = None,
                  audio_source: Union[AudioReader, str, np.ndarray] = None
                  ):
@@ -211,7 +212,7 @@ class TFRecordBuilder(object):
         writer.write(example.SerializeToString())
 
     def make_builders(self,
-                      video_source: Union[VideoReader, str, cv2.VideoCapture, np.ndarray, List[str]],
+                      video_source: Union[str, np.ndarray, List[str], VideoReaderProto],
                       video_frame_size: Tuple[int, int],
                       audio_source: Union[AudioReader, str, np.ndarray],
                       video_buffer_frame_size: Tuple[int, int],
