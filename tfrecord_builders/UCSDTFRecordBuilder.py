@@ -25,23 +25,32 @@ class UCSDTFRecordBuilder(TFRecordBuilder):
                                                   verbose=verbose)
         self.video_frame_size = video_frame_size
 
+    def get_sample_count(self, subset: str) -> int:
+        subset_folder = os.path.join(self.dataset_path, subset)
+        folders = os.listdir(subset_folder)
+        folders = [folder for folder in folders
+                   if os.path.isdir(os.path.join(subset_folder, folder))
+                   and not folder.endswith("_gt")]
+        return len(folders)
+
     def get_data_sources(self) -> List[DataSource]:
-        subsets_lengths = {"Test": 12, "Train": 16}
+        subsets_names = ("Test", "Train")
+        subsets_lengths = {subset_name: self.get_sample_count(subset_name) for subset_name in subsets_names}
         subsets = {}
         for subset in subsets_lengths:
-            paths = []
+            samples = []
             for i in range(subsets_lengths[subset]):
                 filename = "{subset}/{subset}{index:03d}".format(subset=subset, index=i + 1)
                 path = os.path.join(self.dataset_path, filename)
                 path = os.path.normpath(path)
-                paths.append(path)
-            subsets[subset] = paths
 
-        test_labels = ["{}_gt".format(path) for path in subsets["Test"]]
-        train_labels = [False for _ in subsets["Train"]]
-        labels = {"Test": test_labels, "Train": train_labels}
+                label_path = "{}_gt".format(path)
+                if not os.path.exists(label_path):
+                    label_path = False
 
-        subsets = {subset: zip(subsets[subset], labels[subset]) for subset in subsets}
+                sample = (path, label_path)
+                samples.append(sample)
+            subsets[subset] = samples
 
         data_sources = [DataSource(labels_source=labels,
                                    target_path=path,
@@ -54,7 +63,7 @@ class UCSDTFRecordBuilder(TFRecordBuilder):
 
 
 if __name__ == "__main__":
-    ucsd_tf_record_builder = UCSDTFRecordBuilder(dataset_path="../datasets/ucsd/ped2",
+    ucsd_tf_record_builder = UCSDTFRecordBuilder(dataset_path="../datasets/ucsd/ped1",
                                                  shard_duration=2.0,
                                                  video_frequency=25,
                                                  modalities=ModalityCollection(
@@ -62,6 +71,7 @@ if __name__ == "__main__":
                                                          RawVideo(),
                                                      ]
                                                  ),
-                                                 video_frame_size=(128, 128)
+                                                 video_frame_size=(128, 128),
+                                                 video_buffer_frame_size=(128, 128),
                                                  )
     ucsd_tf_record_builder.build()
