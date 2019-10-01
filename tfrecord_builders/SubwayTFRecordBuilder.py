@@ -28,7 +28,7 @@ class SubwayTFRecordBuilder(TFRecordBuilder):
     def get_data_sources(self) -> List[DataSource]:
         video_filename = "Subway_Exit.avi"
         video_filepath = os.path.join(self.dataset_path, video_filename)
-        fps = 25.0
+        fps = self.video_frequency
         training_minutes = 10.0
         training_frames = int(fps * training_minutes * 60)
 

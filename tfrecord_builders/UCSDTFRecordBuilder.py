@@ -37,6 +37,10 @@ class UCSDTFRecordBuilder(TFRecordBuilder):
         subsets_names = ("Test", "Train")
         subsets_lengths = {subset_name: self.get_sample_count(subset_name) for subset_name in subsets_names}
         subsets = {}
+
+        labels = self.ped1_anomaly_timestamps() if subsets_lengths["Test"] == 36 else self.ped2_anomaly_timestamps()
+        labels = self.convert_labels(labels)
+
         for subset in subsets_lengths:
             samples = []
             for i in range(subsets_lengths[subset]):
@@ -44,28 +48,109 @@ class UCSDTFRecordBuilder(TFRecordBuilder):
                 path = os.path.join(self.dataset_path, filename)
                 path = os.path.normpath(path)
 
-                label_path = "{}_gt".format(path)
-                if not os.path.exists(label_path):
-                    label_path = False
+                if subset == "Test":
+                    sample_labels = labels[i]
+                else:
+                    sample_labels = False
 
-                sample = (path, label_path)
+                sample = (path, sample_labels)
                 samples.append(sample)
             subsets[subset] = samples
 
-        data_sources = [DataSource(labels_source=labels,
+        data_sources = [DataSource(labels_source=sample_labels,
                                    target_path=path,
                                    subset_name=subset,
                                    video_source=VideoReader(path),
                                    video_frame_size=self.video_frame_size)
                         for subset in subsets
-                        for path, labels in subsets[subset]]
+                        for path, sample_labels in subsets[subset]]
         return data_sources
+
+    # region Labels
+    @staticmethod
+    def ped1_anomaly_timestamps():
+        """
+        Source : UCSDped1.m
+        """
+        base_labels = [
+            [(60, 152)],
+            [(50, 175)],
+            [(91, 200)],
+            [(31, 168)],
+            [(5, 90), (140, 200)],
+            [(1, 100), (110, 200)],
+            [(1, 175)],
+            [(1, 94)],
+            [(1, 48)],
+            [(1, 140)],
+            [(70, 165)],
+            [(130, 200)],
+            [(1, 156)],
+            [(1, 200)],
+            [(138, 200)],
+            [(123, 200)],
+            [(1, 47)],
+            [(54, 120)],
+            [(64, 138)],
+            [(45, 175)],
+            [(31, 200)],
+            [(16, 107)],
+            [(8, 165)],
+            [(50, 171)],
+            [(40, 135)],
+            [(77, 144)],
+            [(10, 122)],
+            [(105, 200)],
+            [(1, 15), (45, 113)],
+            [(175, 200)],
+            [(1, 180)],
+            [(1, 52), (65, 115)],
+            [(5, 165)],
+            [(1, 121)],
+            [(86, 200)],
+            [(15, 108)],
+        ]
+        return base_labels
+
+    @staticmethod
+    def ped2_anomaly_timestamps():
+        """
+        Source : UCSDped2.m
+        """
+        base_labels = [
+            [(61, 180)],
+            [(95, 180)],
+            [(1, 146)],
+            [(31, 180)],
+            [(1, 129)],
+            [(1, 159)],
+            [(46, 180)],
+            [(1, 180)],
+            [(1, 120)],
+            [(1, 150)],
+            [(1, 180)],
+            [(88, 180)],
+        ]
+        return base_labels
+
+    def convert_labels(self, base_labels: List[List[Tuple[int, int]]]) -> List[List[Tuple[float, float]]]:
+        labels = []
+        for base_sample_labels in base_labels:
+            sample_labels = []
+            for start, end in base_sample_labels:
+                start = (start - 1) / self.video_frequency
+                end = (end - 1) / self.video_frequency
+                sample_labels.append((start, end))
+            labels.append(sample_labels)
+
+        return labels
+    # endregion
 
 
 if __name__ == "__main__":
     ucsd_tf_record_builder = UCSDTFRecordBuilder(dataset_path="../datasets/ucsd/ped1",
-                                                 shard_duration=2.0,
-                                                 video_frequency=25,
+                                                 shard_duration=5.0,
+                                                 video_frequency=10,
                                                  modalities=ModalityCollection(
                                                      [
                                                          RawVideo(),
