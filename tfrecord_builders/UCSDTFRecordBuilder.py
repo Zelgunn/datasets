@@ -38,8 +38,7 @@ class UCSDTFRecordBuilder(TFRecordBuilder):
         subsets_lengths = {subset_name: self.get_sample_count(subset_name) for subset_name in subsets_names}
         subsets = {}
 
-        labels = self.ped1_anomaly_timestamps() if subsets_lengths["Test"] == 36 else self.ped2_anomaly_timestamps()
-        labels = self.convert_labels(labels)
+        labels = self.get_labels(subsets_lengths["Test"])
 
         for subset in subsets_lengths:
             samples = []
@@ -67,6 +66,13 @@ class UCSDTFRecordBuilder(TFRecordBuilder):
         return data_sources
 
     # region Labels
+    def get_labels(self, test_sample_count: int):
+        if test_sample_count == 36:
+            timestamps = self.ped1_anomaly_timestamps()
+        else:
+            timestamps = self.ped2_anomaly_timestamps()
+        return self.convert_labels(timestamps)
+
     @staticmethod
     def ped1_anomaly_timestamps():
         """
