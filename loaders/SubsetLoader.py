@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import os
 import copy
+import random
 from typing import Dict, Tuple, Optional, List
 
 from datasets.loaders import DatasetConfig
@@ -45,17 +46,16 @@ class SubsetLoader(object):
     # region Make tf.data.Dataset(s)
     def make_tf_dataset(self,
                         pattern: Pattern,
-                        subset_folder: List[str] = None,
-                        ):
-        if subset_folder is not None:
-            subset_folder = copy.copy(subset_folder)
-        else:
-            subset_folder = copy.copy(self.subset_folders)
+                        subset_folders: List[str] = None,
+                        ) -> tf.data.Dataset:
+        if subset_folders is None:
+            subset_folders = self.subset_folders
+        subset_folders = copy.copy(subset_folders)
 
         k = os.cpu_count()
         shards_per_sample = self.config.compute_shards_per_sample(pattern)
 
-        generator = self.make_shard_filepath_generator(subset_folder, pattern, shards_per_sample)
+        generator = self.make_shard_filepath_generator(subset_folders, pattern, shards_per_sample)
         dataset = tf.data.Dataset.from_generator(generator,
                                                  output_types=tf.string,
                                                  output_shapes=())
@@ -75,6 +75,28 @@ class SubsetLoader(object):
         dataset = dataset.map(pattern.apply, num_parallel_calls=k)
 
         return dataset
+
+    def make_tf_datasets_splits(self,
+                                pattern: Pattern,
+                                split: float,
+                                subset_folders: List[str] = None,
+                                ) -> Tuple[tf.data.Dataset, Optional[tf.data.Dataset]]:
+        if split <= 0.0 or split >= 1.0:
+            raise ValueError("Split must be strictly between 0.0 and 1.0, found {}.".format(split))
+
+        if subset_folders is None:
+            subset_folders = self.subset_folders
+        subset_folders = copy.copy(subset_folders)
+
+        if len(subset_folders) == 1:
+            return self.make_tf_dataset(pattern, subset_folders), None
+
+        train_count = int_ceil(len(subset_folders) * split)
+        random.shuffle(subset_folders)
+
+        train_dataset = self.make_tf_dataset(pattern, subset_folders[:train_count])
+        validation_dataset = self.make_tf_dataset(pattern, subset_folders[train_count:])
+        return train_dataset, validation_dataset
 
     def make_source_browser(self,
                             pattern: Pattern,
