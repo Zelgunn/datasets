@@ -2,8 +2,9 @@ import numpy as np
 import cv2
 from PIL import Image
 import os
+from tqdm import tqdm
 from enum import IntEnum
-from typing import Union, List, Optional, Iterator
+from typing import Union, List, Optional, Iterator, Tuple
 
 
 class VideoReaderMode(IntEnum):
@@ -179,6 +180,16 @@ class VideoReader(object):
             frame = Image.open(self.image_collection[0])
             return tuple(reversed(frame.size))
     # endregion
+
+    def rewrite_video(self, target_path: str, fps: int, frame_size: Tuple[int, int] = None):
+        if frame_size is None:
+            frame_size = (self.frame_width, self.frame_height)
+
+        out = cv2.VideoWriter(target_path, cv2.VideoWriter_fourcc(*"MJPG"), fps, frame_size)
+
+        for frame in tqdm(self, total=self.frame_count):
+            out.write(frame)
+        out.release()
 
 
 def infer_video_reader_mode(video_source: Union[str, cv2.VideoCapture, np.ndarray, List[str]]):
