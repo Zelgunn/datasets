@@ -142,11 +142,11 @@ class EmolyTFRecordBuilder(TFRecordBuilder):
 
 def main():
     from modalities import RawVideo
-    from modalities import Faces
+    # from modalities import Faces
     # from modalities import OpticalFlow
     # from modalities import DoG
     # from modalities import RawAudio
-    # from modalities import MelSpectrogram
+    from modalities import MelSpectrogram
     # from modalities import Landmarks
 
     parser = argparse.ArgumentParser()
@@ -160,15 +160,17 @@ def main():
                                                    modalities=ModalityCollection(
                                                        [
                                                            RawVideo(),
-                                                           Faces(),
-                                                           # MelSpectrogram(window_width=0.03,
-                                                           #                window_step=0.015,
-                                                           #                mel_filters_count=40),
+                                                           # Faces(),
+                                                           MelSpectrogram(window_width=0.03,
+                                                                          window_step=0.01005,
+                                                                          mel_filters_count=100,
+                                                                          to_db=True),
                                                            # Landmarks("../shape_predictor_68_face_landmarks.dat")
                                                        ]
                                                    ),
-                                                   video_frame_size=(256, 256),
-                                                   video_buffer_frame_size=(1080//4, 1920//4),
+                                                   video_frame_size=(160, 160),
+                                                   # video_buffer_frame_size=(1080//4, 1920//4), # for Faces/Landmarks
+                                                   video_buffer_frame_size=(160, 160),
                                                    )
     emoly_tf_record_builder.build(core_count=args.core_count)
 

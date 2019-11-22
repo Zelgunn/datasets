@@ -94,6 +94,9 @@ class SubsetLoader(object):
         train_count = int_ceil(len(subset_folders) * split)
         random.shuffle(subset_folders)
 
+        if train_count == len(subset_folders):
+            train_count = len(subset_folders) - 1
+
         train_dataset = self.make_tf_dataset(pattern, subset_folders[:train_count])
         validation_dataset = self.make_tf_dataset(pattern, subset_folders[train_count:])
         return train_dataset, validation_dataset
