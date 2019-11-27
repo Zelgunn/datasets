@@ -3,6 +3,7 @@ import numpy as np
 import os
 import copy
 import random
+from tqdm import tqdm
 from typing import Dict, Tuple, Optional, List
 
 from datasets.loaders import DatasetConfig
@@ -397,8 +398,8 @@ class SubsetLoader(object):
             modality_value = modalities[modality_id]
             if modality_id == RawVideo.id():
                 modality_value = modality_value / tf.constant(255.0, modality_value.dtype)
-            elif modality_id == MelSpectrogram.id():
-                modality_value = tf.clip_by_value(modality_value, 0.0, 1.0, name="clip_mel_spectrogram")
+            # elif modality_id == MelSpectrogram.id():
+            #     modality_value = tf.clip_by_value(modality_value, 0.0, 1.0, name="clip_mel_spectrogram")
             elif modality_id in (Landmarks.id(), Faces.id()):
                 modality_value = modality_value
             else:
@@ -445,7 +446,7 @@ class SubsetLoader(object):
         frame_labels = np.empty(shape=[batch_size, frame_count], dtype=np.bool)
 
         frame_duration = 1.0 / frame_count
-        for frame_id in range(frame_count):
+        for frame_id in tqdm(range(frame_count), desc="Timestamps labels to frame labels"):
             start_time = frame_id / frame_count
             end_time = start_time + frame_duration
 
