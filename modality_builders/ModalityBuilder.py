@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Type, Dict, Union, Iterable, Optional
 
 from modalities import Modality, ModalityCollection, RawVideo, RawAudio, DoG, OpticalFlow, MelSpectrogram
-from misc_utils.misc_utils import int_ceil, int_floor
+from misc_utils.general import int_ceil, int_floor
 
 EPSILON = 1e-5
 

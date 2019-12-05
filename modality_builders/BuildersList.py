@@ -1,7 +1,7 @@
 from typing import List
 
 from datasets.modality_builders import ModalityBuilder
-from misc_utils.misc_utils import int_ceil
+from misc_utils.general import int_ceil
 
 
 class BuildersList(object):

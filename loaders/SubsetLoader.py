@@ -10,7 +10,7 @@ from datasets.loaders import DatasetConfig
 from modalities import Modality, ModalityCollection, Pattern
 from modalities import RawVideo, Faces, Landmarks
 from modalities import MelSpectrogram
-from misc_utils.misc_utils import int_ceil, int_floor
+from misc_utils.general import int_ceil, int_floor
 
 
 class SubsetLoader(object):

@@ -6,7 +6,7 @@ from datasets.tfrecord_builders import tfrecords_config_filename
 from modalities import Modality, ModalityCollection, Pattern
 from modalities import RawVideo, Faces, OpticalFlow, DoG, Landmarks
 from modalities import RawAudio, MelSpectrogram
-from misc_utils.misc_utils import int_ceil
+from misc_utils.general import int_ceil
 
 
 def get_shard_count(sample_length: int,
