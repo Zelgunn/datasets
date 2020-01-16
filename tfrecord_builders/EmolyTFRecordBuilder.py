@@ -142,10 +142,10 @@ class EmolyTFRecordBuilder(TFRecordBuilder):
 
 def main():
     from modalities import RawVideo
-    # from modalities import Faces
+    from modalities import Faces
     # from modalities import OpticalFlow
     # from modalities import DoG
-    # from modalities import RawAudio
+    from modalities import RawAudio
     from modalities import MelSpectrogram
     # from modalities import Landmarks
 
@@ -160,7 +160,8 @@ def main():
                                                    modalities=ModalityCollection(
                                                        [
                                                            RawVideo(),
-                                                           # Faces(),
+                                                           Faces(),
+                                                           RawAudio(),
                                                            MelSpectrogram(window_width=0.03,
                                                                           window_step=0.01005,
                                                                           mel_filters_count=100,
@@ -169,8 +170,8 @@ def main():
                                                        ]
                                                    ),
                                                    video_frame_size=(160, 160),
-                                                   # video_buffer_frame_size=(1080//4, 1920//4), # for Faces/Landmarks
-                                                   video_buffer_frame_size=(160, 160),
+                                                   video_buffer_frame_size=(1080//4, 1920//4),  # for Faces/Landmarks
+                                                   # video_buffer_frame_size=(160, 160),
                                                    )
     emoly_tf_record_builder.build(core_count=args.core_count)
 

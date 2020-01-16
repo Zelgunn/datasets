@@ -4,7 +4,8 @@ import os
 import copy
 import random
 from tqdm import tqdm
-from typing import Dict, Tuple, Optional, List
+from time import time
+from typing import Dict, Tuple, Optional, List, Union
 
 from datasets.loaders import DatasetConfig
 from modalities import Modality, ModalityCollection, Pattern
@@ -100,6 +101,9 @@ class SubsetLoader(object):
 
         train_dataset = self.make_tf_dataset(pattern, subset_folders[:train_count])
         validation_dataset = self.make_tf_dataset(pattern, subset_folders[train_count:])
+
+        print("Train set : {} folders | Validation set : {} folders."
+              .format(train_count, len(subset_folders) - train_count))
         return train_dataset, validation_dataset
 
     def make_source_browser(self,
@@ -158,6 +162,10 @@ class SubsetLoader(object):
                     elif shards_count != len(modality_files):
                         raise ValueError("Modalities don't have the same number of shards in "
                                          "{}.".format(folder))
+                    elif shards_count < shards_per_sample:
+                        raise RuntimeError("shards_count ({}) < shards_per_sample ({}). "
+                                           "You don't have enough samples.".
+                                           format(shards_count, shards_per_sample))
 
                 offset = np.random.randint(shards_count - shards_per_sample + 1)
                 for shard_index in range(offset, offset + shards_per_sample):
@@ -398,15 +406,16 @@ class SubsetLoader(object):
             modality_value = modalities[modality_id]
             if modality_id == RawVideo.id():
                 modality_value = modality_value / tf.constant(255.0, modality_value.dtype)
-            # elif modality_id == MelSpectrogram.id():
-            #     modality_value = tf.clip_by_value(modality_value, 0.0, 1.0, name="clip_mel_spectrogram")
             elif modality_id in (Landmarks.id(), Faces.id()):
                 modality_value = modality_value
             else:
                 modality_min, modality_max = self.config.modalities_ranges[modality_id]
                 modality_value = (modality_value - modality_min) / (modality_max - modality_min)
-            modality_value *= (self.config.output_range[1] - self.config.output_range[0])
-            modality_value += self.config.output_range[0]
+
+            if modality_id not in (Landmarks.id(), Faces.id()):
+                modality_value *= (self.config.output_range[1] - self.config.output_range[0])
+                modality_value += self.config.output_range[0]
+
             modalities[modality_id] = modality_value
         return modalities
 
@@ -439,28 +448,66 @@ class SubsetLoader(object):
         # start, end = timestamps[:,:,0], timestamps[:,:,1]
         batch_size, timestamps_per_sample, _ = timestamps.shape
         epsilon = 1e-4
-        starts = timestamps[:, :, 0]
-        ends = timestamps[:, :, 1]
-        labels_are_not_equal = np.abs(starts - ends) > epsilon  # [batch_size, pairs_count]
+        starts = timestamps[:, :, 0]  # shape : [batch_size, pairs_count]
+        ends = timestamps[:, :, 1]  # shape : [batch_size, pairs_count]
+        labels_are_not_equal = np.abs(starts - ends) > epsilon  # shape : [batch_size, pairs_count]
 
-        frame_labels = np.empty(shape=[batch_size, frame_count], dtype=np.bool)
+        frame_labels = np.empty(shape=[batch_size, frame_count], dtype=np.bool)  # shape : [batch_size, frame_count]
 
         frame_duration = 1.0 / frame_count
         for frame_id in tqdm(range(frame_count), desc="Timestamps labels to frame labels"):
-            start_time = frame_id / frame_count
-            end_time = start_time + frame_duration
+            start_time = frame_id / frame_count  # shape : []
+            end_time = start_time + frame_duration  # shape : []
 
-            start_in = np.all([start_time >= starts, start_time <= ends], axis=0)
-            end_in = np.all([end_time >= starts, end_time <= ends], axis=0)
+            start_in = np.all([start_time >= starts, start_time <= ends], axis=0)  # shape : [batch_size, pairs_count]
+            end_in = np.all([end_time >= starts, end_time <= ends], axis=0)  # shape : [batch_size, pairs_count]
 
-            frame_in = np.any([start_in, end_in], axis=0)
+            frame_in = np.any([start_in, end_in], axis=0)  # shape : [batch_size, pairs_count]
             # noinspection PyUnresolvedReferences
-            frame_in = np.logical_and(frame_in, labels_are_not_equal)
-            frame_in = np.any(frame_in, axis=1)
+            frame_in = np.logical_and(frame_in, labels_are_not_equal)  # shape : [batch_size, pairs_count]
+            frame_in = np.any(frame_in, axis=1)  # shape : [batch_size]
 
             frame_labels[:, frame_id] = frame_in
 
         return frame_labels
+
+    @staticmethod
+    def tf_timestamps_labels_to_frame_labels(timestamps: Union[tf.Tensor, np.ndarray],
+                                             frame_count: Union[tf.Tensor, int]
+                                             ):
+
+        print("Building labels from timestamps...")
+        t0 = time()
+        with tf.name_scope("timestamps_labels_to_frame_labels"):
+            timestamps = tf.convert_to_tensor(timestamps, dtype=tf.float32)  # shape : [batch_size, pairs_count, 2]
+            frame_count = tf.convert_to_tensor(frame_count, dtype=tf.int32)  # shape : []
+
+            batch_size, timestamps_per_sample, _ = timestamps.shape
+            epsilon = tf.constant(1e-4, dtype=tf.float32, name="epsilon")  # shape : []
+
+            timestamps = tf.expand_dims(timestamps, axis=1)  # shape : [batch_size, 1, pairs_count, 2]
+            timestamps = tf.tile(timestamps, multiples=[1, frame_count, 1, 1])
+            starts, ends = tf.unstack(timestamps, num=2, axis=-1)  # shape : [batch_size, frame_count, pairs_count] * 2
+            delta = tf.abs(ends - starts)  # shape : [batch_size, frame_count, pairs_count]
+            labels_are_not_equal = delta > epsilon  # shape : [batch_size, frame_count, pairs_count]
+
+            frame_ids = tf.range(frame_count, dtype=tf.float32)  # shape : [frame_count]
+            frame_ids = tf.reshape(frame_ids, [1, frame_count, 1])  # shape : [1, frame_count, 1]
+            frame_duration = 1.0 / tf.cast(frame_count, tf.float32)  # shape : []
+            start_time = frame_ids * frame_duration  # shape : [1, frame_count, 1]
+            end_times = start_time + frame_duration  # shape : [1, frame_count, 1]
+
+            # shape (out) : [batch_size, frame_count, pairs_count]
+            start_in = tf.logical_and(start_time >= starts, start_time <= ends)
+            end_in = tf.logical_and(end_times >= starts, end_times <= ends)
+
+            frame_in = tf.logical_or(start_in, end_in)  # shape : [batch_size, frame_count, pairs_count]
+            frame_in = tf.logical_and(frame_in, labels_are_not_equal)  # shape : [batch_size, frame_count, pairs_count]
+            frame_labels = tf.reduce_any(frame_in, axis=-1)  # shape : [batch_size, frame_count]
+
+        print("`tf_timestamps_labels_to_frame_labels` took {} seconds".format(round(time() - t0, 3)))
+        return frame_labels
+
     # endregion
 
 
