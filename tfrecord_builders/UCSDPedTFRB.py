@@ -6,7 +6,7 @@ from datasets.tfrecord_builders import TFRecordBuilder, DataSource
 from datasets.data_readers import VideoReader
 
 
-class UCSDTFRecordBuilder(TFRecordBuilder):
+class UCSDPedTFRB(TFRecordBuilder):
     def __init__(self,
                  dataset_path: str,
                  shard_duration: float,
@@ -15,14 +15,14 @@ class UCSDTFRecordBuilder(TFRecordBuilder):
                  video_frame_size: Tuple[int, int],
                  video_buffer_frame_size: Tuple[int, int],
                  verbose=1):
-        super(UCSDTFRecordBuilder, self).__init__(dataset_path=dataset_path,
-                                                  shard_duration=shard_duration,
-                                                  video_frequency=video_frequency,
-                                                  audio_frequency=None,
-                                                  modalities=modalities,
-                                                  labels_frequency=video_frequency,
-                                                  video_buffer_frame_size=video_buffer_frame_size,
-                                                  verbose=verbose)
+        super(UCSDPedTFRB, self).__init__(dataset_path=dataset_path,
+                                          shard_duration=shard_duration,
+                                          video_frequency=video_frequency,
+                                          audio_frequency=None,
+                                          modalities=modalities,
+                                          labels_frequency=video_frequency,
+                                          video_buffer_frame_size=video_buffer_frame_size,
+                                          verbose=verbose)
         self.video_frame_size = video_frame_size
 
     def get_sample_count(self, subset: str) -> int:
@@ -154,15 +154,15 @@ class UCSDTFRecordBuilder(TFRecordBuilder):
 
 
 if __name__ == "__main__":
-    ucsd_tf_record_builder = UCSDTFRecordBuilder(dataset_path="../datasets/ucsd/ped1",
-                                                 shard_duration=5.0,
-                                                 video_frequency=10,
-                                                 modalities=ModalityCollection(
+    ucsd_tf_record_builder = UCSDPedTFRB(dataset_path="../datasets/ucsd/ped1",
+                                         shard_duration=5.0,
+                                         video_frequency=10,
+                                         modalities=ModalityCollection(
                                                      [
                                                          RawVideo(),
                                                      ]
                                                  ),
-                                                 video_frame_size=(128, 128),
-                                                 video_buffer_frame_size=(128, 128),
-                                                 )
+                                         video_frame_size=(128, 128),
+                                         video_buffer_frame_size=(128, 128),
+                                         )
     ucsd_tf_record_builder.build()

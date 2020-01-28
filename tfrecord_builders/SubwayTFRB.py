@@ -7,7 +7,7 @@ from datasets.tfrecord_builders import TFRecordBuilder, DataSource
 from datasets.data_readers.VideoReader import VideoReaderProto
 
 
-class SubwayTFRecordBuilder(TFRecordBuilder):
+class SubwayTFRB(TFRecordBuilder):
     def __init__(self,
                  dataset_path: str,
                  shard_duration: float,
@@ -19,13 +19,13 @@ class SubwayTFRecordBuilder(TFRecordBuilder):
                  version: "SubwayVideo" = None,
                  use_extended_labels=True,
                  verbose=1):
-        super(SubwayTFRecordBuilder, self).__init__(dataset_path=dataset_path,
-                                                    shard_duration=shard_duration,
-                                                    video_frequency=video_frequency,
-                                                    audio_frequency=audio_frequency,
-                                                    modalities=modalities,
-                                                    video_buffer_frame_size=video_buffer_frame_size,
-                                                    verbose=verbose)
+        super(SubwayTFRB, self).__init__(dataset_path=dataset_path,
+                                         shard_duration=shard_duration,
+                                         video_frequency=video_frequency,
+                                         audio_frequency=audio_frequency,
+                                         modalities=modalities,
+                                         video_buffer_frame_size=video_buffer_frame_size,
+                                         verbose=verbose)
         if version is None:
             version = self.guess_version(dataset_path)
             if version is None:
@@ -257,17 +257,17 @@ known_subway_configs = {
 
 
 if __name__ == "__main__":
-    subway_tf_record_builder = SubwayTFRecordBuilder(dataset_path="../datasets/subway/entrance",
-                                                     shard_duration=1.28,
-                                                     video_frequency=25,
-                                                     audio_frequency=None,
-                                                     modalities=ModalityCollection(
+    subway_tf_record_builder = SubwayTFRB(dataset_path="../datasets/subway/entrance",
+                                          shard_duration=1.28,
+                                          video_frequency=25,
+                                          audio_frequency=None,
+                                          modalities=ModalityCollection(
                                                          [
                                                              RawVideo(),
                                                          ]
                                                      ),
-                                                     video_frame_size=(160, 160),
-                                                     video_buffer_frame_size=(160, 160),
-                                                     use_extended_labels=True,
-                                                     )
+                                          video_frame_size=(160, 160),
+                                          video_buffer_frame_size=(160, 160),
+                                          use_extended_labels=True,
+                                          )
     subway_tf_record_builder.build()

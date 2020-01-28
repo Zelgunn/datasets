@@ -17,24 +17,47 @@ class VideoReaderProto(object):
     def __init__(self,
                  video_source: Union[str, cv2.VideoCapture, np.ndarray, List[str]],
                  mode: VideoReaderMode = None,
-                 start=0, end=None):
+                 frequency=None,
+                 start=0,
+                 end=None
+                 ):
         self.video_source = video_source
         self.mode = mode
+        self.frequency = frequency
         self.start = start
         self.end = end
 
     def to_video_reader(self) -> "VideoReader":
         return VideoReader(video_source=self.video_source,
                            mode=self.mode,
+                           frequency=self.frequency,
                            start=self.start,
                            end=self.end)
 
 
 class VideoReader(object):
+    """
+        :param video_source:
+            Either a string (filepath), a numpy array, a cv2.VideoCapture or an list of string (filepaths to images),
+            the source for the video.
+        :param mode:
+            (Optional) Either `CV_VIDEO_CAPTURE` for audio files on hard drive, or `NP_ARRAY` for numpy arrays
+            or `IMAGE_COLLECTION` for a set of images.
+        :param frequency:
+            (Optional) The video frequency, required for numpy arrays if `start` or `end` are not None.
+        :param start:
+            (Optional) The start (in seconds) of the audio. Used to only read a sub-part.
+        :param end:
+            (Optional) The end (in seconds) of the audio. Used to only read a sub-part.
+        """
+
     def __init__(self,
                  video_source: Union[str, cv2.VideoCapture, np.ndarray, List[str]],
                  mode: VideoReaderMode = None,
-                 start=0, end=None):
+                 frequency=None,
+                 start=0,
+                 end=None
+                 ):
 
         if mode is None:
             self.mode = infer_video_reader_mode(video_source)
@@ -57,7 +80,10 @@ class VideoReader(object):
                     raise RuntimeError("Could not open {}.".format(self.video_source))
             else:
                 self.video_capture = video_source
+
             max_frame_count = int(self.video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
+            if frequency is None:
+                frequency = float(self.video_capture.get(cv2.CAP_PROP_FPS))
 
         elif self.mode == VideoReaderMode.NP_ARRAY:
             if isinstance(video_source, str):
@@ -77,9 +103,16 @@ class VideoReader(object):
             else:
                 self.image_collection = video_source
             max_frame_count = len(self.image_collection)
+
+        self.frequency = frequency
         # endregion
 
         # region End / Start
+        if start is not None:
+            start = int(start * frequency)
+        if end is not None:
+            end = int(end * frequency)
+
         if end is None:
             self.end = max_frame_count
         elif end < 0:
@@ -96,8 +129,8 @@ class VideoReader(object):
 
         if self.end <= self.start:
             raise ValueError("End frame index ({}) is less or equal than"
-                             " the start frame index ({}). Max frame count is {}. Mode is {}."
-                             .format(self.end, self.start, max_frame_count, self.mode))
+                             " the start frame index ({}). Max frame count is {}. Mode is {}. Frequency is {}."
+                             .format(self.end, self.start, max_frame_count, self.mode, self.frequency))
         # endregion
 
     def __iter__(self) -> Iterator[np.ndarray]:
@@ -179,6 +212,7 @@ class VideoReader(object):
         else:
             frame = Image.open(self.image_collection[0])
             return tuple(reversed(frame.size))
+
     # endregion
 
     def rewrite_video(self, target_path: str, fps: int, frame_size: Tuple[int, int] = None):
@@ -190,6 +224,10 @@ class VideoReader(object):
         for frame in tqdm(self, total=self.frame_count):
             out.write(frame)
         out.release()
+
+    def close(self):
+        if self.mode == VideoReaderMode.CV_VIDEO_CAPTURE:
+            self.video_capture.release()
 
 
 def infer_video_reader_mode(video_source: Union[str, cv2.VideoCapture, np.ndarray, List[str]]):

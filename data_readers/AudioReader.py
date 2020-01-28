@@ -16,15 +16,28 @@ class AudioReaderMode(IntEnum):
 
 
 class AudioReader(object):
+    """
+    :param audio_source:
+        Either a string (filepath), a numpy array or an AudioFileClip, the source for the audio.
+    :param mode:
+        (Optional) Either `AUDIO_FILE` for audio files on hard drive, or `NP_ARRAY` for numpy arrays.
+    :param frequency:
+        (Optional) The audio frequency, required for numpy arrays if `start` or `end` are not None.
+    :param start:
+        (Optional) The start (in seconds) of the audio. Used to only read a sub-part.
+    :param end:
+        (Optional) The end (in seconds) of the audio. Used to only read a sub-part.
+    """
+
     def __init__(self,
-                 audio_source: Union[str, np.ndarray, List[str]],
+                 audio_source: Union[str, np.ndarray, AudioFileClip],
                  mode: AudioReaderMode = None,
                  frequency: int = None,
-                 start=None, end=None):
+                 start=None,
+                 end=None
+                 ):
 
         check_int_type(frequency, "frequency")
-        check_int_type(start, "start")
-        check_int_type(end, "end")
 
         if mode is None:
             if isinstance(audio_source, np.ndarray):
@@ -55,6 +68,11 @@ class AudioReader(object):
         self.frequency: int = frequency
 
         # region End / Start
+        if start is not None:
+            start = int(start * frequency)
+        if end is not None:
+            end = int(end * frequency)
+
         if self.mode == AudioReaderMode.AUDIO_FILE:
             max_frame_count = int(self.frequency * self.audio_source.duration)
         else:
@@ -107,3 +125,7 @@ class AudioReader(object):
             return 1
         else:
             return self.audio_source.shape[1]
+
+    def close(self):
+        if self.mode == AudioReaderMode.AUDIO_FILE:
+            self.audio_source.close()
