@@ -1,6 +1,7 @@
+from abc import abstractmethod
 import json
 import os
-from typing import Dict, List, Any, Tuple, Union
+from typing import Dict, List, Any, Tuple, Union, Type
 
 from datasets.tfrecord_builders import tfrecords_config_filename
 from modalities import Modality, ModalityCollection, Pattern
@@ -18,36 +19,38 @@ def get_shard_count(sample_length: int,
 
 class DatasetConfig(object):
     def __init__(self,
-                 tfrecords_config_folder: str,
+                 modalities: ModalityCollection,
+                 shard_duration: float,
+                 video_frequency,
+                 audio_frequency,
+                 max_labels_size: int,
+                 modalities_ranges: Dict[str, Tuple[float, float]],
                  output_range: Tuple[float, float],
                  ):
-        self.tfrecords_config_folder = tfrecords_config_folder
-        tf_records_config_filepath = os.path.join(tfrecords_config_folder, tfrecords_config_filename)
-        with open(tf_records_config_filepath, 'r') as file:
-            self.tfrecords_config: Dict[str, Any] = json.load(file)
-
-        self.modalities = ModalityCollection.from_config(self.tfrecords_config["modalities"])
-        self.subsets: Dict[str, List[str]] = self.tfrecords_config["subsets"]
-        self.shard_duration = float(self.tfrecords_config["shard_duration"])
-        self.video_frequency = self.tfrecords_config["video_frequency"]
-        self.audio_frequency = self.tfrecords_config["audio_frequency"]
-        self.max_labels_size: int = int(self.tfrecords_config["max_labels_size"])
-
-        self.modalities_ranges = self.tfrecords_config["modalities_ranges"]
-
+        self.modalities = modalities
+        self.shard_duration = shard_duration
+        self.video_frequency = video_frequency
+        self.audio_frequency = audio_frequency
+        self.max_labels_size = max_labels_size
+        self.modalities_ranges = modalities_ranges
         self.output_range = output_range
 
-    def list_subset_tfrecords(self,
-                              subset_name: str
-                              ) -> Dict[str, List[str]]:
-        subset_files = {}
-        subset = self.subsets[subset_name]
-        for folder in subset:
-            folder = os.path.join(self.tfrecords_config_folder, folder)
-            folder = os.path.normpath(folder)
-            files = [file for file in os.listdir(folder) if file.endswith(".tfrecord")]
-            subset_files[folder] = files
-        return subset_files
+    @abstractmethod
+    def get_subset_folders(self,
+                           subset_name: str
+                           ) -> List[str]:
+        raise NotImplementedError
+
+    def get_modality_record_count(self, subset_name: str, modality_id) -> int:
+        records_count = 0
+        folders = self.get_subset_folders(subset_name)
+
+        for folder in folders:
+            folder = os.path.join(folder, modality_id)
+            modality_files = [file for file in os.listdir(folder) if file.endswith(".tfrecord")]
+            records_count += len(modality_files)
+
+        return records_count
 
     def get_modality_shard_size(self,
                                 modality: Modality
@@ -87,3 +90,60 @@ class DatasetConfig(object):
 
         shards_per_sample: int = max(shard_counts)
         return shards_per_sample
+
+    def get_shared_modality_types(self, configs: List["DatasetConfig"]):
+        modalities: List[Type[Modality]] = []
+
+        for modality in self.modalities:
+            shared = True
+            for config in configs:
+                if modality.id() not in config.modalities.ids():
+                    shared = False
+                    break
+            if shared:
+                modalities.append(type(modality))
+
+        return modalities
+
+    def filter_out_unshared_modalities(self, configs: List["DatasetConfig"]):
+        shared_modalities = self.get_shared_modality_types(configs)
+        self.modalities.filter(shared_modalities)
+
+        shared_ids = [modality.id() for modality in shared_modalities]
+        modalities_ids = list(self.modalities_ranges.keys())
+        for modality_id in modalities_ids:
+            if modality_id not in shared_ids:
+                self.modalities_ranges.pop(modality_id)
+
+    @staticmethod
+    def load_tf_records_config(tfrecords_config_folder: str) -> Dict[str, Any]:
+        tf_records_config_filepath = os.path.join(tfrecords_config_folder, tfrecords_config_filename)
+        with open(tf_records_config_filepath, 'r') as file:
+            tfrecords_config: Dict[str, Any] = json.load(file)
+        return tfrecords_config
+
+
+def main():
+    # configs = [
+    #     DatasetConfig(tfrecords_config_folder=r"D:\Users\Degva\Documents\_PhD\Tensorflow\datasets\emoly",
+    #                   output_range=(0.0, 1.0)),
+    #     DatasetConfig(tfrecords_config_folder=r"D:\Users\Degva\Documents\_PhD\Tensorflow\datasets\shanghaitech",
+    #                   output_range=(0.0, 1.0)),
+    #     DatasetConfig(tfrecords_config_folder=r"D:\Users\Degva\Documents\_PhD\Tensorflow\datasets\ucsd\ped2",
+    #                   output_range=(0.0, 1.0)),
+    #     DatasetConfig(tfrecords_config_folder=r"D:\Users\Degva\Documents\_PhD\Tensorflow\datasets\ucsd\ped1",
+    #                   output_range=(0.0, 1.0)),
+    #     DatasetConfig(tfrecords_config_folder=r"D:\Users\Degva\Documents\_PhD\Tensorflow\datasets\avenue",
+    #                   output_range=(0.0, 1.0)),
+    #     DatasetConfig(tfrecords_config_folder=r"D:\Users\Degva\Documents\_PhD\Tensorflow\datasets\subway\entrance",
+    #                   output_range=(0.0, 1.0)),
+    #     DatasetConfig(tfrecords_config_folder=r"D:\Users\Degva\Documents\_PhD\Tensorflow\datasets\subway\exit",
+    #                   output_range=(0.0, 1.0)),
+    # ]
+
+    # MultiSetLoader(configs, "Train")
+    pass
+
+
+if __name__ == "__main__":
+    main()

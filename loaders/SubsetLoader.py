@@ -3,7 +3,6 @@ import numpy as np
 import os
 import copy
 import random
-from tqdm import tqdm
 from time import time
 from typing import Dict, Tuple, Optional, List, Union
 
@@ -19,13 +18,12 @@ class SubsetLoader(object):
     def __init__(self,
                  config: DatasetConfig,
                  subset_name: str):
+        self.subset_name = subset_name
+
         self.config = config
         self.check_unsupported_shard_sizes()
 
-        self.subset_name = subset_name
-        self.subset_files = {folder: sorted(files)
-                             for folder, files in config.list_subset_tfrecords(subset_name).items()}
-        self.subset_folders = list(self.subset_files.keys())
+        self.subset_folders = config.get_subset_folders(subset_name)
 
         self._train_tf_dataset: Optional[tf.data.Dataset] = None
         self._test_tf_dataset: Optional[tf.data.Dataset] = None
@@ -81,6 +79,7 @@ class SubsetLoader(object):
     def make_tf_datasets_splits(self,
                                 pattern: Pattern,
                                 split: float,
+                                batch_size: int,
                                 subset_folders: List[str] = None,
                                 ) -> Tuple[tf.data.Dataset, Optional[tf.data.Dataset]]:
         if split <= 0.0 or split >= 1.0:
@@ -101,6 +100,10 @@ class SubsetLoader(object):
 
         train_dataset = self.make_tf_dataset(pattern, subset_folders[:train_count])
         validation_dataset = self.make_tf_dataset(pattern, subset_folders[train_count:])
+
+        train_dataset = train_dataset.batch(batch_size).prefetch(-1)
+        if validation_dataset is not None:
+            validation_dataset = validation_dataset.batch(batch_size)
 
         print("Train set : {} folders | Validation set : {} folders."
               .format(train_count, len(subset_folders) - train_count))
@@ -143,6 +146,8 @@ class SubsetLoader(object):
         if pattern.contains_labels:
             modality_ids.append("labels")
 
+        folders = SubsetLoader.build_folders_probability_map(folders, modality_ids[0], shards_per_sample)
+
         def generator():
             # noinspection DuplicatedCode
             while True:
@@ -173,6 +178,22 @@ class SubsetLoader(object):
                         yield files[file_index][shard_index]
 
         return generator
+
+    @staticmethod
+    def build_folders_probability_map(folders: List[str],
+                                      modality_ref_id: str,
+                                      shards_per_sample: int):
+        probability_map = []
+
+        for folder in folders:
+            modality_folder = os.path.join(folder, modality_ref_id)
+            files = [file for file in os.listdir(modality_folder) if file.endswith(".tfrecord")]
+            file_count = len(files)
+            ref_count = file_count - (shards_per_sample - 1)
+            for _ in range(ref_count):
+                probability_map.append(folder)
+
+        return probability_map
 
     @staticmethod
     def make_browser_filepath_generator(source_folder: str,
@@ -443,39 +464,9 @@ class SubsetLoader(object):
         return results
 
     @staticmethod
-    def timestamps_labels_to_frame_labels(timestamps: np.ndarray, frame_count: int):
-        # [batch_size, pairs_count, 2] => [batch_size, frame_count]
-        # start, end = timestamps[:,:,0], timestamps[:,:,1]
-        batch_size, timestamps_per_sample, _ = timestamps.shape
-        epsilon = 1e-4
-        starts = timestamps[:, :, 0]  # shape : [batch_size, pairs_count]
-        ends = timestamps[:, :, 1]  # shape : [batch_size, pairs_count]
-        labels_are_not_equal = np.abs(starts - ends) > epsilon  # shape : [batch_size, pairs_count]
-
-        frame_labels = np.empty(shape=[batch_size, frame_count], dtype=np.bool)  # shape : [batch_size, frame_count]
-
-        frame_duration = 1.0 / frame_count
-        for frame_id in tqdm(range(frame_count), desc="Timestamps labels to frame labels"):
-            start_time = frame_id / frame_count  # shape : []
-            end_time = start_time + frame_duration  # shape : []
-
-            start_in = np.all([start_time >= starts, start_time <= ends], axis=0)  # shape : [batch_size, pairs_count]
-            end_in = np.all([end_time >= starts, end_time <= ends], axis=0)  # shape : [batch_size, pairs_count]
-
-            frame_in = np.any([start_in, end_in], axis=0)  # shape : [batch_size, pairs_count]
-            # noinspection PyUnresolvedReferences
-            frame_in = np.logical_and(frame_in, labels_are_not_equal)  # shape : [batch_size, pairs_count]
-            frame_in = np.any(frame_in, axis=1)  # shape : [batch_size]
-
-            frame_labels[:, frame_id] = frame_in
-
-        return frame_labels
-
-    @staticmethod
-    def tf_timestamps_labels_to_frame_labels(timestamps: Union[tf.Tensor, np.ndarray],
-                                             frame_count: Union[tf.Tensor, int]
-                                             ):
-
+    def timestamps_labels_to_frame_labels(timestamps: Union[tf.Tensor, np.ndarray],
+                                          frame_count: Union[tf.Tensor, int]
+                                          ):
         print("Building labels from timestamps...")
         t0 = time()
         with tf.name_scope("timestamps_labels_to_frame_labels"):
@@ -541,4 +532,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 # endregion

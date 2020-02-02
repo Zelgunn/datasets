@@ -8,7 +8,7 @@ import subprocess
 import pytube
 from pytube.exceptions import VideoUnavailable, RegexMatchError
 from pytube.monostate import Monostate
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from typing import Dict, Tuple, List, Union, Optional
 
 from modalities import ModalityCollection
@@ -37,7 +37,28 @@ class AudioSetTFRB(TFRecordBuilder):
         self.video_frame_size = video_frame_size
 
     def get_data_sources(self) -> List[DataSource]:
-        pass
+        videos_folder = os.path.join(self.dataset_path, "videos")
+        video_filenames = os.listdir(videos_folder)
+
+        subset_name = "Train"
+        labels = [(0.0, 0.0)]
+
+        data_sources: List[DataSource] = []
+        for video_filename in video_filenames:
+            sample_name = video_filename[:-4]
+            target_path = os.path.join(self.dataset_path, subset_name, sample_name)
+            video_path = os.path.join(videos_folder, video_filename)
+
+            data_source = DataSource(labels_source=labels,
+                                     target_path=target_path,
+                                     subset_name=subset_name,
+                                     video_source=video_path,
+                                     video_frame_size=self.video_frame_size,
+                                     audio_source=video_path
+                                     )
+            data_sources.append(data_source)
+
+        return data_sources
 
     @staticmethod
     def prepare_dataset(dataset_path: str, filters: List[str]):
@@ -204,7 +225,7 @@ def video_available(youtube_id: str) -> bool:
     available = True
     try:
         pytube.YouTube(url="https://www.youtube.com/watch?v={}".format(youtube_id))
-    except (VideoUnavailable, ValueError, RegexMatchError, KeyError, HTTPError):
+    except (VideoUnavailable, ValueError, RegexMatchError, KeyError, HTTPError, URLError):
         available = False
     return available
 

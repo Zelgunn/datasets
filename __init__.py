@@ -1,2 +1,2 @@
 # noinspection PyUnresolvedReferences
-from datasets.loaders import DatasetConfig, SubsetLoader, DatasetLoader
+from datasets.loaders import DatasetConfig, SubsetLoader, DatasetLoader, SingleSetConfig, MultiSetConfig

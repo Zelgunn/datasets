@@ -11,7 +11,7 @@ from typing import Union, Tuple, List, Dict, Type, Optional
 from modalities import Modality, ModalityCollection
 from modalities.utils import float_list_feature
 from datasets.modality_builders import ModalityBuilder, VideoBuilder, AudioBuilder, BuildersList
-from datasets.data_readers import VideoReader, AudioReader
+from datasets.data_readers import AudioReader
 from datasets.data_readers.VideoReader import VideoReaderProto
 from datasets.labels_builders import LabelsBuilder
 
@@ -65,7 +65,7 @@ class TFRecordBuilder(object):
     def build(self, core_count=6):
         data_sources = self.get_data_sources()
 
-        subsets_dict: Dict[str, Union[List[str], Dict]] = {}
+        subsets_dict: Dict[str, List[str]] = {"Train": [], "Test": []}
 
         min_values = None
         max_values = None
