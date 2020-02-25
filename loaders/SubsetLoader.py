@@ -3,10 +3,9 @@ import numpy as np
 import os
 import copy
 import random
-from time import time
 from typing import Dict, Tuple, Optional, List, Union
 
-from datasets.loaders import DatasetConfig
+from datasets.loaders import DatasetConfig, SingleSetConfig
 from modalities import Modality, ModalityCollection, Pattern
 from modalities import RawVideo, Faces, Landmarks
 from modalities import MelSpectrogram
@@ -47,6 +46,7 @@ class SubsetLoader(object):
     def make_tf_dataset(self,
                         pattern: Pattern,
                         subset_folders: List[str] = None,
+                        seed=None,
                         ) -> tf.data.Dataset:
         if subset_folders is None:
             subset_folders = self.subset_folders
@@ -55,7 +55,7 @@ class SubsetLoader(object):
         k = os.cpu_count()
         shards_per_sample = self.config.compute_shards_per_sample(pattern)
 
-        generator = self.make_shard_filepath_generator(subset_folders, pattern, shards_per_sample)
+        generator = self.make_shard_filepath_generator(subset_folders, pattern, shards_per_sample, seed=seed)
         dataset = tf.data.Dataset.from_generator(generator,
                                                  output_types=tf.string,
                                                  output_shapes=())
@@ -141,17 +141,19 @@ class SubsetLoader(object):
     @staticmethod
     def make_shard_filepath_generator(folders: List[str],
                                       pattern: Pattern,
-                                      shards_per_sample: int):
+                                      shards_per_sample: int,
+                                      seed=None):
         modality_ids = list(pattern.modality_ids)
         if pattern.contains_labels:
             modality_ids.append("labels")
 
         folders = SubsetLoader.build_folders_probability_map(folders, modality_ids[0], shards_per_sample)
+        generator_random_state = np.random.RandomState(seed=seed)
 
         def generator():
             # noinspection DuplicatedCode
             while True:
-                source_index = np.random.randint(len(folders))
+                source_index = generator_random_state.randint(len(folders))
                 source_folder = folders[source_index]
                 files = []
                 shards_count = None
@@ -172,7 +174,7 @@ class SubsetLoader(object):
                                            "You don't have enough samples.".
                                            format(shards_count, shards_per_sample))
 
-                offset = np.random.randint(shards_count - shards_per_sample + 1)
+                offset = generator_random_state.randint(shards_count - shards_per_sample + 1)
                 for shard_index in range(offset, offset + shards_per_sample):
                     for file_index in range(len(files)):
                         yield files[file_index][shard_index]
@@ -454,8 +456,8 @@ class SubsetLoader(object):
     # endregion
 
     # region Utility
-    def get_batch(self, batch_size: int, pattern: Pattern):
-        dataset = self.make_tf_dataset(pattern)
+    def get_batch(self, batch_size: int, pattern: Pattern, seed=None):
+        dataset = self.make_tf_dataset(pattern, seed=seed)
         dataset = dataset.batch(batch_size)
         results = None
         for results in dataset:
@@ -467,8 +469,6 @@ class SubsetLoader(object):
     def timestamps_labels_to_frame_labels(timestamps: Union[tf.Tensor, np.ndarray],
                                           frame_count: Union[tf.Tensor, int]
                                           ):
-        print("Building labels from timestamps...")
-        t0 = time()
         with tf.name_scope("timestamps_labels_to_frame_labels"):
             timestamps = tf.convert_to_tensor(timestamps, dtype=tf.float32)  # shape : [batch_size, pairs_count, 2]
             frame_count = tf.convert_to_tensor(frame_count, dtype=tf.int32)  # shape : []
@@ -495,8 +495,6 @@ class SubsetLoader(object):
             frame_in = tf.logical_or(start_in, end_in)  # shape : [batch_size, frame_count, pairs_count]
             frame_in = tf.logical_and(frame_in, labels_are_not_equal)  # shape : [batch_size, frame_count, pairs_count]
             frame_labels = tf.reduce_any(frame_in, axis=-1)  # shape : [batch_size, frame_count]
-
-        print("`tf_timestamps_labels_to_frame_labels` took {} seconds".format(round(time() - t0, 3)))
         return frame_labels
 
     # endregion
@@ -521,9 +519,9 @@ def main():
             ModalityLoadInfo(RawAudio, audio_length)
         )
     )
-    config = DatasetConfig(tfrecords_config_folder="C:/datasets/emoly_split",
-                           output_range=(0.0, 1.0)
-                           )
+
+    config = SingleSetConfig(tfrecords_config_folder="C:/datasets/emoly_split",
+                             output_range=(0.0, 1.0))
 
     loader = SubsetLoader(config, "Test")
     dataset = loader.make_tf_dataset(pattern)
