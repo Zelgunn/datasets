@@ -2,7 +2,6 @@ import tensorflow as tf
 import numpy as np
 import os
 import copy
-import random
 from typing import Dict, Tuple, Optional, List, Union
 
 from datasets.loaders import DatasetConfig, SingleSetConfig
@@ -45,14 +44,15 @@ class SubsetLoader(object):
     # region Make tf.data.Dataset(s)
     def make_tf_dataset(self,
                         pattern: Pattern,
+                        seed,
                         subset_folders: List[str] = None,
-                        seed=None,
                         ) -> tf.data.Dataset:
         if subset_folders is None:
             subset_folders = self.subset_folders
         subset_folders = copy.copy(subset_folders)
 
         k = os.cpu_count()
+        # k = 1
         shards_per_sample = self.config.compute_shards_per_sample(pattern)
 
         generator = self.make_shard_filepath_generator(subset_folders, pattern, shards_per_sample, seed=seed)
@@ -68,7 +68,8 @@ class SubsetLoader(object):
         dataset = dataset.batch(shards_per_sample)
         dataset = dataset.map(lambda shards, shards_sizes: self.join_shards_and_extract_one_random(shards,
                                                                                                    shards_sizes,
-                                                                                                   pattern),
+                                                                                                   pattern,
+                                                                                                   seed=seed),
                               num_parallel_calls=k)
 
         dataset = dataset.map(self.normalize_modalities, num_parallel_calls=k)
@@ -80,6 +81,7 @@ class SubsetLoader(object):
                                 pattern: Pattern,
                                 split: float,
                                 batch_size: int,
+                                seed,
                                 subset_folders: List[str] = None,
                                 ) -> Tuple[tf.data.Dataset, Optional[tf.data.Dataset]]:
         if split <= 0.0 or split >= 1.0:
@@ -90,16 +92,16 @@ class SubsetLoader(object):
         subset_folders = copy.copy(subset_folders)
 
         if len(subset_folders) == 1:
-            return self.make_tf_dataset(pattern, subset_folders), None
+            return self.make_tf_dataset(pattern, seed=seed, subset_folders=subset_folders), None
 
         train_count = int_ceil(len(subset_folders) * split)
-        random.shuffle(subset_folders)
+        np.random.RandomState(seed=seed).shuffle(subset_folders)
 
         if train_count == len(subset_folders):
             train_count = len(subset_folders) - 1
 
-        train_dataset = self.make_tf_dataset(pattern, subset_folders[:train_count])
-        validation_dataset = self.make_tf_dataset(pattern, subset_folders[train_count:])
+        train_dataset = self.make_tf_dataset(pattern, seed=seed, subset_folders=subset_folders[:train_count])
+        validation_dataset = self.make_tf_dataset(pattern, seed=seed, subset_folders=subset_folders[train_count:])
 
         train_dataset = train_dataset.batch(batch_size).prefetch(-1)
         if validation_dataset is not None:
@@ -142,7 +144,7 @@ class SubsetLoader(object):
     def make_shard_filepath_generator(folders: List[str],
                                       pattern: Pattern,
                                       shards_per_sample: int,
-                                      seed=None):
+                                      seed):
         modality_ids = list(pattern.modality_ids)
         if pattern.contains_labels:
             modality_ids.append("labels")
@@ -309,8 +311,9 @@ class SubsetLoader(object):
     def join_shards_and_extract_one_random(self,
                                            shards: Dict[str, tf.Tensor],
                                            shard_sizes: Dict[str, tf.Tensor],
-                                           pattern: Pattern):
-        offset = tf.random.uniform(shape=(), minval=0, maxval=1.0, dtype=tf.float32, name="offset")
+                                           pattern: Pattern,
+                                           seed):
+        offset = tf.random.uniform(shape=(), minval=0, maxval=1.0, dtype=tf.float32, name="offset", seed=seed)
         return self.join_shards(shards, shard_sizes, offset, pattern)
 
     def join_shards_and_extract_all(self,
@@ -456,7 +459,7 @@ class SubsetLoader(object):
     # endregion
 
     # region Utility
-    def get_batch(self, batch_size: int, pattern: Pattern, seed=None):
+    def get_batch(self, batch_size: int, pattern: Pattern, seed):
         dataset = self.make_tf_dataset(pattern, seed=seed)
         dataset = dataset.batch(batch_size)
         results = None
@@ -524,7 +527,7 @@ def main():
                              output_range=(0.0, 1.0))
 
     loader = SubsetLoader(config, "Test")
-    dataset = loader.make_tf_dataset(pattern)
+    dataset = loader.make_tf_dataset(pattern, seed=0)
     print(dataset)
 
 
