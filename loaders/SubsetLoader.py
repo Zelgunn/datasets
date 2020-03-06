@@ -52,14 +52,14 @@ class SubsetLoader(object):
         subset_folders = copy.copy(subset_folders)
 
         k = os.cpu_count()
-        # k = 1
+        # k = None
         shards_per_sample = self.config.compute_shards_per_sample(pattern)
 
         generator = self.make_shard_filepath_generator(subset_folders, pattern, shards_per_sample, seed=seed)
         dataset = tf.data.Dataset.from_generator(generator,
                                                  output_types=tf.string,
                                                  output_shapes=())
-        dataset = tf.data.TFRecordDataset(dataset, num_parallel_reads=k)
+        dataset = tf.data.TFRecordDataset(dataset, num_parallel_reads=1 if k is None else k)
         dataset = dataset.batch(pattern.modalities_per_sample).prefetch(1)
 
         dataset = dataset.map(lambda serialized_shards: self.parse_shard(serialized_shards, pattern),
