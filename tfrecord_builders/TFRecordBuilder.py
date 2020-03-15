@@ -1,12 +1,11 @@
 import tensorflow as tf
 import numpy as np
-import cv2
 import os
 import json
 import time
 import datetime
 from multiprocessing import Pool
-from typing import Union, Tuple, List, Dict, Type, Optional
+from typing import Union, Tuple, List, Dict, Type, Optional, Any
 
 from modalities import Modality, ModalityCollection
 from modalities.utils import float_list_feature
@@ -14,6 +13,7 @@ from datasets.modality_builders import ModalityBuilder, VideoBuilder, AudioBuild
 from datasets.data_readers import AudioReader
 from datasets.data_readers.VideoReader import VideoReaderProto
 from datasets.labels_builders import LabelsBuilder
+from misc_utils.math_utils import join_two_distributions_statistics
 
 
 class DataSource(object):
@@ -32,6 +32,70 @@ class DataSource(object):
         self.video_source = video_source
         self.video_frame_size = video_frame_size
         self.audio_source = audio_source
+
+
+class ModalityShardStatistics(object):
+    def __init__(self,
+                 min_value: float,
+                 max_value: float,
+                 mean: float,
+                 stddev: float,
+                 size: int,
+                 ):
+        self.min_value = min_value
+        self.max_value = max_value
+        self.mean = mean
+        self.stddev = stddev
+        self.size = size
+
+    def update(self, other: "ModalityShardStatistics"):
+        self.min_value = min(self.min_value, other.min_value)
+        self.max_value = max(self.max_value, other.max_value)
+
+        self.size, self.mean, self.stddev = join_two_distributions_statistics(count_1=self.size, count_2=other.size,
+                                                                              mean_1=self.mean, mean_2=other.mean,
+                                                                              stddev_1=self.stddev,
+                                                                              stddev_2=other.stddev)
+
+    def to_dict(self) -> Dict[str, Union[float, int]]:
+        return {
+            "min": float(self.min_value),
+            "max": float(self.max_value),
+            "mean": float(self.mean),
+            "stddev": float(self.stddev),
+            "size": int(self.size),
+        }
+
+
+class BuilderOutput(object):
+    def __init__(self):
+        self.modalities_statistics: Dict[Type[Modality], ModalityShardStatistics] = {}
+        self.max_labels_size = 0
+
+    def shard_update(self,
+                     shard_statistics: Dict[Type[Modality], ModalityShardStatistics],
+                     max_labels_size: int):
+        for modality_type, modality_statistics in shard_statistics.items():
+            if modality_type not in self.modalities_statistics:
+                self.modalities_statistics[modality_type] = modality_statistics
+            else:
+                self.modalities_statistics[modality_type].update(modality_statistics)
+
+        self.max_labels_size = max(self.max_labels_size, max_labels_size)
+
+    def update(self, other: "BuilderOutput"):
+        self.shard_update(shard_statistics=other.modalities_statistics, max_labels_size=other.max_labels_size)
+
+    def to_dict(self) -> Dict[str, Any]:
+        final_statistics = {"max_labels_size": self.max_labels_size}
+
+        modalities_statistics = {}
+        for modality_type, modality_statistics in self.modalities_statistics.items():
+            modalities_statistics[modality_type.id()] = modality_statistics.to_dict()
+
+        final_statistics["modalities"] = modalities_statistics
+
+        return final_statistics
 
 
 tfrecords_config_filename = "tfrecords_config.json"
@@ -67,15 +131,12 @@ class TFRecordBuilder(object):
 
         subsets_dict: Dict[str, List[str]] = {"Train": [], "Test": []}
 
-        min_values = None
-        max_values = None
-        max_labels_sizes = []
-
         data_sources_count = len(data_sources)
         start_time = time.time()
 
         builder_pool = Pool(core_count)
         builders = []
+        builders_outputs = BuilderOutput()
 
         for data_source in data_sources:
             # region Fill subsets_dict with folders containing shards
@@ -95,17 +156,8 @@ class TFRecordBuilder(object):
 
             for builder in working_builders:
                 if builder.ready():
-                    source_min_values, source_max_values, max_labels_size = builder.get()
-                    # region Modalities min/max for normalization (step 1 : get)
-                    if min_values is None:
-                        min_values = source_min_values
-                        max_values = source_max_values
-                    else:
-                        for modality_type in source_min_values:
-                            min_values[modality_type] += source_min_values[modality_type]
-                            max_values[modality_type] += source_max_values[modality_type]
-                    # endregion
-                    max_labels_sizes.append(max_labels_size)
+                    builder_output: BuilderOutput = builder.get()
+                    builders_outputs.update(builder_output)
                 else:
                     remaining_builders.append(builder)
 
@@ -122,30 +174,20 @@ class TFRecordBuilder(object):
 
             working_builders = remaining_builders
 
-        # region Modalities min/max for normalization (step 2 : compute)
-        modalities_ranges = {
-            modality_type.id(): [float(min(min_values[modality_type])),
-                                 float(max(max_values[modality_type]))]
-            for modality_type in min_values
-        }
-        # endregion
-        max_labels_size = max(max_labels_sizes)
-
         tfrecords_config = {
             "modalities": self.modalities.get_config(),
             "shard_duration": self.shard_duration,
             "video_frequency": self.video_frequency,
             "audio_frequency": self.audio_frequency,
             "subsets": subsets_dict,
-            "modalities_ranges": modalities_ranges,
-            "max_labels_size": max_labels_size,
+            "statistics": builders_outputs.to_dict(),
         }
 
         # TODO : Merge previous tfrecords_config with new when adding new modalities
         with open(os.path.join(self.dataset_path, tfrecords_config_filename), 'w') as file:
             json.dump(tfrecords_config, file)
 
-    def build_one(self, data_source: Union[DataSource, List[DataSource]]):
+    def build_one(self, data_source: Union[DataSource, List[DataSource]]) -> BuilderOutput:
         builders = self.make_builders(video_source=data_source.video_source,
                                       video_frame_size=data_source.video_frame_size,
                                       video_buffer_frame_size=self.video_buffer_frame_size,
@@ -162,9 +204,7 @@ class TFRecordBuilder(object):
 
         source_iterator = zip(modality_builder, labels_iterator)
 
-        min_values = {}
-        max_values = {}
-        max_labels_size = 0
+        output = BuilderOutput()
 
         for i, shard in enumerate(source_iterator):
             # region Verbose
@@ -175,30 +215,29 @@ class TFRecordBuilder(object):
 
             modalities, labels = shard
             modalities: Dict[Type[Modality], np.ndarray] = modalities
+            shard_statistics: Dict[Type[Modality], ModalityShardStatistics] = {}
 
             for modality_type, modality_value in modalities.items():
                 encoded_features = modality_type.encode_to_tfrecord_feature(modality_value)
                 self.write_features_to_tfrecord(encoded_features, data_source.target_path, i, modality_type.id())
 
-                # region Get modality min/max for normalization
-                modality_min = modality_value.min()
-                modality_max = modality_value.max()
-                if modality_type not in min_values:
-                    min_values[modality_type] = [modality_min]
-                    max_values[modality_type] = [modality_max]
-                else:
-                    min_values[modality_type] += [modality_min]
-                    max_values[modality_type] += [modality_max]
-                # endregion
+                shard_statistics[modality_type] = ModalityShardStatistics(
+                    min_value=modality_value.min(),
+                    max_value=modality_value.max(),
+                    mean=modality_value.mean(),
+                    stddev=modality_value.std(),
+                    size=modality_value.shape[0],
+                )
 
-            max_labels_size = max(max_labels_size, len(labels))
+            output.shard_update(shard_statistics=shard_statistics, max_labels_size=len(labels))
+
             features = {"labels": float_list_feature(labels)}
             self.write_features_to_tfrecord(features, data_source.target_path, i, "labels")
 
         if self.verbose > 0:
             print("\r{} : Done".format(data_source.target_path))
 
-        return min_values, max_values, max_labels_size
+        return output
 
     @staticmethod
     def write_features_to_tfrecord(features: Dict, base_filepath: str, index: int, sub_folder: str = None):

@@ -59,7 +59,7 @@ class UCSDPedTFRB(TFRecordBuilder):
         data_sources = [DataSource(labels_source=sample_labels,
                                    target_path=path,
                                    subset_name=subset,
-                                   video_source=VideoReader(path),
+                                   video_source=VideoReader(path, frequency=self.video_frequency),
                                    video_frame_size=self.video_frame_size)
                         for subset in subsets
                         for path, sample_labels in subsets[subset]]
@@ -154,7 +154,7 @@ class UCSDPedTFRB(TFRecordBuilder):
 
 
 if __name__ == "__main__":
-    ucsd_tf_record_builder = UCSDPedTFRB(dataset_path="../datasets/ucsd/ped1",
+    ucsd_tf_record_builder = UCSDPedTFRB(dataset_path="../datasets/ucsd/ped2",
                                          shard_duration=5.0,
                                          video_frequency=10,
                                          modalities=ModalityCollection(
@@ -162,7 +162,7 @@ if __name__ == "__main__":
                                                          RawVideo(),
                                                      ]
                                                  ),
-                                         video_frame_size=(128, 128),
-                                         video_buffer_frame_size=(128, 128),
+                                         video_frame_size=(240, 160),
+                                         video_buffer_frame_size=(240, 160),
                                          )
     ucsd_tf_record_builder.build()

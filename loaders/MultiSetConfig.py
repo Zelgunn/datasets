@@ -17,8 +17,7 @@ class MultiSetConfig(DatasetConfig):
                                              shard_duration=self.configs[0].shard_duration,
                                              video_frequency=self.configs[0].video_frequency,
                                              audio_frequency=self.configs[0].audio_frequency,
-                                             max_labels_size=self.configs[0].max_labels_size,
-                                             modalities_ranges=self.configs[0].modalities_ranges,
+                                             statistics=self.configs[0].statistics,
                                              output_range=output_range,
                                              )
 

@@ -2,6 +2,7 @@ from typing import List
 
 from datasets.modality_builders import ModalityBuilder
 from misc_utils.general import int_ceil
+from modalities import ModalityCollection
 
 
 class BuildersList(object):
@@ -12,6 +13,7 @@ class BuildersList(object):
                 modalities.append(modality)
 
         self.builders: List[ModalityBuilder] = builders
+        self.modalities = ModalityCollection(modalities)
 
     def __iter__(self):
         builders_iterator = zip(*self.builders)

@@ -164,7 +164,7 @@ def main():
                                                            RawAudio(),
                                                            MelSpectrogram(window_width=0.03,
                                                                           window_step=0.01005,
-                                                                          mel_filters_count=100,
+                                                                          mel_filters_count=128,
                                                                           to_db=True),
                                                            # Landmarks("../shape_predictor_68_face_landmarks.dat")
                                                        ]

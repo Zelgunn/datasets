@@ -1,3 +1,4 @@
+import tensorflow as tf
 from abc import abstractmethod
 import json
 import os
@@ -23,17 +24,21 @@ class DatasetConfig(object):
                  shard_duration: float,
                  video_frequency,
                  audio_frequency,
-                 max_labels_size: int,
-                 modalities_ranges: Dict[str, Tuple[float, float]],
+                 statistics: Dict[str, Any],
                  output_range: Tuple[float, float],
                  ):
         self.modalities = modalities
         self.shard_duration = shard_duration
         self.video_frequency = video_frequency
         self.audio_frequency = audio_frequency
-        self.max_labels_size = max_labels_size
-        self.modalities_ranges = modalities_ranges
+        self.statistics = statistics
         self.output_range = output_range
+
+        self.modalities_ranges: Dict[str, Tuple[tf.Tensor, tf.Tensor]] = {}
+        for modality_id, modality_statistics in self.modalities_statistics.items():
+            modality_min = tf.constant(value=float(modality_statistics["min"]), name="{}_min".format(modality_id))
+            modality_max = tf.constant(value=float(modality_statistics["max"]), name="{}_max".format(modality_id))
+            self.modalities_ranges[modality_id] = (modality_min, modality_max)
 
     @abstractmethod
     def get_subset_folders(self,
@@ -110,10 +115,9 @@ class DatasetConfig(object):
         self.modalities.filter(shared_modalities)
 
         shared_ids = [modality.id() for modality in shared_modalities]
-        modalities_ids = list(self.modalities_ranges.keys())
-        for modality_id in modalities_ids:
+        for modality_id in self.modalities_ids:
             if modality_id not in shared_ids:
-                self.modalities_ranges.pop(modality_id)
+                self.modalities_statistics.pop(modality_id)
 
     @staticmethod
     def load_tf_records_config(tfrecords_config_folder: str) -> Dict[str, Any]:
@@ -122,26 +126,20 @@ class DatasetConfig(object):
             tfrecords_config: Dict[str, Any] = json.load(file)
         return tfrecords_config
 
+    @property
+    def modalities_ids(self) -> List[str]:
+        return self.modalities.ids()
+
+    @property
+    def modalities_statistics(self) -> Dict[str, Dict[str, str]]:
+        return self.statistics["modalities"]
+
+    @property
+    def max_labels_size(self) -> int:
+        return int(self.statistics["max_labels_size"])
+
 
 def main():
-    # configs = [
-    #     DatasetConfig(tfrecords_config_folder=r"D:\Users\Degva\Documents\_PhD\Tensorflow\datasets\emoly",
-    #                   output_range=(0.0, 1.0)),
-    #     DatasetConfig(tfrecords_config_folder=r"D:\Users\Degva\Documents\_PhD\Tensorflow\datasets\shanghaitech",
-    #                   output_range=(0.0, 1.0)),
-    #     DatasetConfig(tfrecords_config_folder=r"D:\Users\Degva\Documents\_PhD\Tensorflow\datasets\ucsd\ped2",
-    #                   output_range=(0.0, 1.0)),
-    #     DatasetConfig(tfrecords_config_folder=r"D:\Users\Degva\Documents\_PhD\Tensorflow\datasets\ucsd\ped1",
-    #                   output_range=(0.0, 1.0)),
-    #     DatasetConfig(tfrecords_config_folder=r"D:\Users\Degva\Documents\_PhD\Tensorflow\datasets\avenue",
-    #                   output_range=(0.0, 1.0)),
-    #     DatasetConfig(tfrecords_config_folder=r"D:\Users\Degva\Documents\_PhD\Tensorflow\datasets\subway\entrance",
-    #                   output_range=(0.0, 1.0)),
-    #     DatasetConfig(tfrecords_config_folder=r"D:\Users\Degva\Documents\_PhD\Tensorflow\datasets\subway\exit",
-    #                   output_range=(0.0, 1.0)),
-    # ]
-
-    # MultiSetLoader(configs, "Train")
     pass
 
 

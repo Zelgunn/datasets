@@ -2,7 +2,7 @@ import numpy as np
 from moviepy.editor import AudioFileClip
 from pydub.utils import mediainfo
 from enum import IntEnum
-from typing import Union, List, Any, Iterator
+from typing import Union, Any, Iterator
 
 
 def check_int_type(value: Any, name: str):

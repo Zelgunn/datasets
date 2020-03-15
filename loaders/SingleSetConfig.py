@@ -19,8 +19,7 @@ class SingleSetConfig(DatasetConfig):
                                               shard_duration=float(self.tfrecords_config["shard_duration"]),
                                               video_frequency=self.tfrecords_config["video_frequency"],
                                               audio_frequency=self.tfrecords_config["audio_frequency"],
-                                              max_labels_size=int(self.tfrecords_config["max_labels_size"]),
-                                              modalities_ranges=self.tfrecords_config["modalities_ranges"],
+                                              statistics=self.tfrecords_config["statistics"],
                                               output_range=output_range,
                                               )
 
