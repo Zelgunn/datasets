@@ -162,7 +162,7 @@ if __name__ == "__main__":
                                                          RawVideo(),
                                                      ]
                                                  ),
-                                         video_frame_size=(240, 160),
-                                         video_buffer_frame_size=(240, 160),
+                                         video_frame_size=(160, 160),
+                                         video_buffer_frame_size=(160, 160),
                                          )
     ucsd_tf_record_builder.build()

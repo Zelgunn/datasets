@@ -6,8 +6,8 @@ from typing import Dict, Tuple, Optional, List, Union
 
 from datasets.loaders import DatasetConfig, SingleSetConfig
 from modalities import Modality, ModalityCollection, Pattern
-from modalities import RawVideo, Faces, Landmarks
-from modalities import MelSpectrogram
+from modalities import RawVideo, Faces, Landmarks, OpticalFlow, DoG
+from modalities import RawAudio, MelSpectrogram
 from misc_utils.general import int_ceil, int_floor
 
 
@@ -73,6 +73,7 @@ class SubsetLoader(object):
                               num_parallel_calls=k)
 
         dataset = dataset.map(self.normalize_modalities, num_parallel_calls=k)
+        # dataset = dataset.map(self.standardize_modalities, num_parallel_calls=k)
         dataset = dataset.map(pattern.apply, num_parallel_calls=k)
 
         return dataset
@@ -131,7 +132,8 @@ class SubsetLoader(object):
                               self.join_shards_and_extract_all(shards, shard_sizes, pattern, stride))
 
         dataset = dataset.unbatch()
-        dataset = dataset.map(self.normalize_modalities)
+        # dataset = dataset.map(self.standardize_modalities)
+        # dataset = dataset.map(self.normalize_modalities)
         dataset = dataset.map(pattern.apply)
         dataset = dataset.batch(1)
 
@@ -423,7 +425,7 @@ class SubsetLoader(object):
 
     # endregion
 
-    # region 4) Normalize modalities
+    # region 4) Normalize/Standardize modalities
     def normalize_modalities(self, modalities: Dict[str, tf.Tensor]):
         for modality_id in modalities:
             if modality_id == "labels":
@@ -441,6 +443,20 @@ class SubsetLoader(object):
             if modality_id not in (Landmarks.id(), Faces.id()):
                 modality_value *= (self.config.output_range[1] - self.config.output_range[0])
                 modality_value += self.config.output_range[0]
+
+            modalities[modality_id] = modality_value
+        return modalities
+
+    def standardize_modalities(self, modalities: Dict[str, tf.Tensor]):
+        for modality_id in modalities:
+            if modality_id == "labels":
+                continue
+
+            modality_value = modalities[modality_id]
+            if modality_id in [RawVideo.id(), OpticalFlow.id(), DoG.id(), RawAudio.id(), MelSpectrogram.id()]:
+                mean = self.config.modalities_mean[modality_id]
+                stddev = self.config.modalities_stddev[modality_id]
+                modality_value = (modality_value - mean) / stddev
 
             modalities[modality_id] = modality_value
         return modalities

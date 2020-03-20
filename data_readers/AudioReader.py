@@ -1,5 +1,6 @@
 import numpy as np
 from moviepy.editor import AudioFileClip
+import librosa
 from pydub.utils import mediainfo
 from enum import IntEnum
 from typing import Union, Any, Iterator
@@ -19,8 +20,6 @@ class AudioReader(object):
     """
     :param audio_source:
         Either a string (filepath), a numpy array or an AudioFileClip, the source for the audio.
-    :param mode:
-        (Optional) Either `AUDIO_FILE` for audio files on hard drive, or `NP_ARRAY` for numpy arrays.
     :param frequency:
         (Optional) The audio frequency, required for numpy arrays if `start` or `end` are not None.
     :param start:
@@ -31,7 +30,6 @@ class AudioReader(object):
 
     def __init__(self,
                  audio_source: Union[str, np.ndarray, AudioFileClip],
-                 mode: AudioReaderMode = None,
                  frequency: int = None,
                  start=None,
                  end=None
@@ -39,25 +37,24 @@ class AudioReader(object):
 
         check_int_type(frequency, "frequency")
 
-        if mode is None:
-            if isinstance(audio_source, np.ndarray):
-                mode = AudioReaderMode.NP_ARRAY
-                if audio_source.ndim not in [1, 2]:
-                    raise ValueError("Rank of `audio_source` must either be 1 or 2, got {}".format(audio_source.ndim))
+        if isinstance(audio_source, np.ndarray):
+            mode = AudioReaderMode.NP_ARRAY
+            if audio_source.ndim not in [1, 2]:
+                raise ValueError("Rank of `audio_source` must either be 1 or 2, got {}".format(audio_source.ndim))
 
-            elif isinstance(audio_source, str):
-                mode = AudioReaderMode.AUDIO_FILE
-                if frequency is None:
-                    frequency = int(mediainfo(audio_source)["sample_rate"])
-                audio_source = AudioFileClip(audio_source, fps=frequency)
+        elif isinstance(audio_source, str):
+            mode = AudioReaderMode.NP_ARRAY
+            if frequency is None:
+                frequency = int(mediainfo(audio_source)["sample_rate"])
+            audio_source, _ = librosa.load(path=audio_source, sr=frequency, mono=True)
 
-            elif isinstance(audio_source, AudioFileClip):
-                mode = AudioReaderMode.AUDIO_FILE
-                if frequency is None:
-                    frequency = audio_source.fps
+        elif isinstance(audio_source, AudioFileClip):
+            mode = AudioReaderMode.AUDIO_FILE
+            if frequency is None:
+                frequency = audio_source.fps
 
-            else:
-                raise ValueError("`audio_source` of type '{}' is not supported.".format(type(audio_source)))
+        else:
+            raise ValueError("`audio_source` of type '{}' is not supported.".format(type(audio_source)))
 
         self.mode: AudioReaderMode = mode
         self.audio_source: Union[AudioFileClip, np.ndarray] = audio_source

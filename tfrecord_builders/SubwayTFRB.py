@@ -59,7 +59,11 @@ class SubwayTFRB(TFRecordBuilder):
         train_data_sources = []
         train_target_path = os.path.join(self.dataset_path, "Train")
         for start, end in self.video_config.get_train_splits(self.use_extended_labels):
-            train_video_reader = VideoReaderProto(video_filepath, start=start, end=end)
+            train_video_reader = VideoReaderProto(video_filepath,
+                                                  start=start / self.video_frequency,
+                                                  end=end / self.video_frequency,
+                                                  frequency=self.video_frequency
+                                                  )
             train_labels = False
             target_path = os.path.join(train_target_path, "{}_to_{}".format(start, end))
             if not os.path.isdir(target_path):
@@ -74,8 +78,9 @@ class SubwayTFRB(TFRecordBuilder):
 
         # region test_data_source
         test_video_reader = VideoReaderProto(video_filepath,
-                                             start=self.video_config.training_frames,
-                                             end=self.video_config.testing_frames
+                                             start=self.video_config.training_seconds,
+                                             end=self.video_config.testing_seconds,
+                                             frequency=self.video_frequency
                                              )
         test_labels = self.video_config.get_anomaly_timestamps_in_seconds(self.use_extended_labels)
         test_target_path = os.path.join(self.dataset_path, "Test")
@@ -113,14 +118,24 @@ class SubwayVideoConfig(NamedTuple):
     testing_minutes: float = None
 
     @property
+    def training_seconds(self) -> float:
+        return self.training_minutes * 60.0
+
+    @property
+    def testing_seconds(self) -> Optional[float]:
+        if self.testing_minutes is None:
+            return None
+        return self.testing_minutes * 60.0
+
+    @property
     def training_frames(self) -> int:
-        return int(self.fps * self.training_minutes * 60)
+        return int(self.fps * self.training_seconds)
 
     @property
     def testing_frames(self) -> Optional[int]:
         if self.testing_minutes is None:
             return None
-        return int(self.fps * (self.testing_minutes + self.training_minutes) * 60)
+        return int(self.fps * (self.testing_seconds + self.training_seconds))
 
     def get_anomaly_timestamps(self, use_extended: bool):
         if use_extended and self.extended_anomaly_timestamps is None:
@@ -151,7 +166,7 @@ class SubwayVideoConfig(NamedTuple):
                 break
 
         if len(anomaly_splits) == 0:
-            anomaly_splits = [0, self.training_frames - 1]
+            anomaly_splits = ([0, self.training_frames - 1],)
 
         splits = []
         for start, end in anomaly_splits:
@@ -165,7 +180,7 @@ class SubwayVideoConfig(NamedTuple):
 
 # region Pre-defined subsets configurations
 exit_config = SubwayVideoConfig(
-    video_filename="",
+    video_filename="Subway_Exit.avi",
     training_minutes=10.0,
     fps=25,
     anomaly_timestamps=[(40880, 41160), (41400, 41700), (50410, 50710), (50980, 51250), (60160, 60940)]
@@ -257,17 +272,17 @@ known_subway_configs = {
 
 
 if __name__ == "__main__":
-    subway_tf_record_builder = SubwayTFRB(dataset_path="../datasets/subway/entrance",
+    subway_tf_record_builder = SubwayTFRB(dataset_path="../datasets/subway/exit",
                                           shard_duration=1.28,
                                           video_frequency=25,
                                           audio_frequency=None,
                                           modalities=ModalityCollection(
-                                                         [
-                                                             RawVideo(),
-                                                         ]
-                                                     ),
-                                          video_frame_size=(160, 160),
-                                          video_buffer_frame_size=(160, 160),
+                                              [
+                                                  RawVideo(),
+                                              ]
+                                          ),
+                                          video_frame_size=(512//2, 384//2),
+                                          video_buffer_frame_size=(512//2, 384//2),
                                           use_extended_labels=True,
                                           )
     subway_tf_record_builder.build()

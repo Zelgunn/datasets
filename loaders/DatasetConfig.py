@@ -18,6 +18,16 @@ def get_shard_count(sample_length: int,
     return max(2, shard_count)
 
 
+def get_config_constant(modalities_statistics: Dict[str, Dict[str, float]],
+                        modality_id: str,
+                        statistic_name: str
+                        ) -> tf.Tensor:
+    modality_statistics = modalities_statistics[modality_id]
+    return tf.constant(value=modality_statistics[statistic_name],
+                       dtype=tf.float32,
+                       name="{}_{}".format(modality_id, statistic_name))
+
+
 class DatasetConfig(object):
     def __init__(self,
                  modalities: ModalityCollection,
@@ -35,10 +45,15 @@ class DatasetConfig(object):
         self.output_range = output_range
 
         self.modalities_ranges: Dict[str, Tuple[tf.Tensor, tf.Tensor]] = {}
-        for modality_id, modality_statistics in self.modalities_statistics.items():
-            modality_min = tf.constant(value=float(modality_statistics["min"]), name="{}_min".format(modality_id))
-            modality_max = tf.constant(value=float(modality_statistics["max"]), name="{}_max".format(modality_id))
+        self.modalities_mean: Dict[str, tf.Tensor] = {}
+        self.modalities_stddev: Dict[str, tf.Tensor] = {}
+        for modality_id in self.modalities_statistics:
+            modality_min = get_config_constant(self.modalities_statistics, modality_id, "min")
+            modality_max = get_config_constant(self.modalities_statistics, modality_id, "max")
             self.modalities_ranges[modality_id] = (modality_min, modality_max)
+
+            self.modalities_mean[modality_id] = get_config_constant(self.modalities_statistics, modality_id, "mean")
+            self.modalities_stddev[modality_id] = get_config_constant(self.modalities_statistics, modality_id, "stddev")
 
     @abstractmethod
     def get_subset_folders(self,
@@ -131,7 +146,7 @@ class DatasetConfig(object):
         return self.modalities.ids()
 
     @property
-    def modalities_statistics(self) -> Dict[str, Dict[str, str]]:
+    def modalities_statistics(self) -> Dict[str, Dict[str, float]]:
         return self.statistics["modalities"]
 
     @property

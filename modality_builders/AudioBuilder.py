@@ -49,3 +49,6 @@ class AudioBuilder(ModalityBuilder):
     @property
     def source_frame_count(self):
         return self.reader.frame_count
+
+    def close(self):
+        self.reader.close()

@@ -79,7 +79,7 @@ if __name__ == "__main__":
                                                   RawVideo(),
                                               ]
                                           ),
-                                          video_frame_size=(128, 128),
-                                          video_buffer_frame_size=(128, 128),
+                                          video_frame_size=(640//2, 360//2),
+                                          video_buffer_frame_size=(640//2, 360//2),
                                           )
     avenue_tf_record_builder.build()

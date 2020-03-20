@@ -136,6 +136,10 @@ class ModalityBuilder(ABC):
 
     # endregion
 
+    @abstractmethod
+    def close(self):
+        raise NotImplementedError
+
 
 def get_max_frame_count(duration: float, frequency: Union[int, float]):
     return int_ceil(duration * frequency, EPSILON)

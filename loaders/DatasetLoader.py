@@ -17,4 +17,7 @@ class DatasetLoader(object):
 
     @property
     def test_subset(self) -> SubsetLoader:
-        return self.subsets["Test"]
+        if len(self.subsets["Test"].subset_folders) > 0:
+            return self.subsets["Test"]
+        else:
+            return self.subsets["Train"]

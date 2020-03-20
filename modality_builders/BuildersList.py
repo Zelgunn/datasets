@@ -38,3 +38,7 @@ class BuildersList(object):
 
         min_shard_count = int_ceil(min_shard_count)
         return min_shard_count
+
+    def close(self):
+        for builder in self.builders:
+            builder.close()

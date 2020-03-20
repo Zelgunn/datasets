@@ -24,7 +24,7 @@ class VideoBuilder(ModalityBuilder):
         if isinstance(video_reader, VideoReaderProto):
             video_reader = video_reader.to_video_reader()
         elif not isinstance(video_reader, VideoReader):
-            video_reader = VideoReader(video_reader)
+            video_reader = VideoReader(video_reader, frequency=source_frequency)
         else:
             video_reader = video_reader
 
@@ -138,3 +138,6 @@ class VideoBuilder(ModalityBuilder):
     @property
     def source_frame_count(self):
         return self.reader.frame_count
+
+    def close(self):
+        self.reader.close()

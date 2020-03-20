@@ -17,7 +17,7 @@ class VideoReaderProto(object):
     def __init__(self,
                  video_source: Union[str, cv2.VideoCapture, np.ndarray, List[str]],
                  mode: VideoReaderMode = None,
-                 frequency=None,
+                 frequency=25,
                  start=0,
                  end=None
                  ):
@@ -55,9 +55,13 @@ class VideoReader(object):
                  video_source: Union[str, cv2.VideoCapture, np.ndarray, List[str]],
                  mode: VideoReaderMode = None,
                  frequency=None,
-                 start=0,
+                 start=None,
                  end=None
                  ):
+
+        self.name = None
+        if isinstance(video_source, str):
+            self.name = video_source
 
         if mode is None:
             self.mode = infer_video_reader_mode(video_source)
@@ -125,12 +129,13 @@ class VideoReader(object):
         elif start < 0:
             self.start = max_frame_count + start
         else:
-            self.start = min(start, max_frame_count)
+            self.start = start
 
         if self.end <= self.start:
             raise ValueError("End frame index ({}) is less or equal than"
-                             " the start frame index ({}). Max frame count is {}. Mode is {}. Frequency is {}."
-                             .format(self.end, self.start, max_frame_count, self.mode, self.frequency))
+                             " the start frame index ({}). "
+                             "Max frame count is {}. Mode is {}. Frequency is {}. Name is {}."
+                             .format(self.end, self.start, max_frame_count, self.mode, self.frequency, self.name))
         # endregion
 
     def __iter__(self) -> Iterator[np.ndarray]:

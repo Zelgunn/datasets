@@ -261,15 +261,47 @@ def write_skip_list(filepath: str, skip_list: List[str]):
 
 def main():
     dataset_path = r"..\datasets\audioset"
-    filters = [
-        # "Speech",
-        "Male speech, man speaking",
-        "Female speech, woman speaking",
-        "Child speech, kid speaking",
-        "Narration, monologue",
-    ]
+    # filters = [
+    #     "Speech",
+    #     "Male speech, man speaking",
+    #     "Female speech, woman speaking",
+    #     "Child speech, kid speaking",
+    #     "Narration, monologue",
+    # ]
 
-    AudioSetTFRB.prepare_dataset(dataset_path, filters)
+    # AudioSetTFRB.prepare_dataset(dataset_path, filters)
+
+    from modalities import RawVideo
+    # from modalities import Faces
+    # from modalities import OpticalFlow
+    # from modalities import DoG
+    from modalities import RawAudio
+    from modalities import MelSpectrogram
+    # from modalities import Landmarks
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--core_count", default=8, type=int)
+    args = parser.parse_args()
+
+    tf_record_builder = AudioSetTFRB(dataset_path=dataset_path,
+                                     shard_duration=1.28,
+                                     video_frequency=25,
+                                     audio_frequency=48000,
+                                     modalities=ModalityCollection(
+                                         [
+                                             RawVideo(),
+                                             RawAudio(),
+                                             MelSpectrogram(window_width=0.03,
+                                                            window_step=0.01005,
+                                                            mel_filters_count=128,
+                                                            to_db=True)
+                                         ]
+                                     ),
+                                     video_frame_size=(128, 128),
+                                     # video_buffer_frame_size=(1080 // 4, 1920 // 4),  # for Faces/Landmarks
+                                     video_buffer_frame_size=(128, 128),
+                                     )
+    tf_record_builder.build(core_count=args.core_count)
 
 
 if __name__ == "__main__":

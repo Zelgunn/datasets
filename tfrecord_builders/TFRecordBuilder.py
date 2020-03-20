@@ -234,8 +234,7 @@ class TFRecordBuilder(object):
             features = {"labels": float_list_feature(labels)}
             self.write_features_to_tfrecord(features, data_source.target_path, i, "labels")
 
-        if self.verbose > 0:
-            print("\r{} : Done".format(data_source.target_path))
+        modality_builder.close()
 
         return output
 
