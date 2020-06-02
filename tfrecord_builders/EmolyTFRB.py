@@ -23,9 +23,9 @@ class EmolyTFRB(TFRecordBuilder):
                                         video_frequency=video_frequency,
                                         audio_frequency=audio_frequency,
                                         modalities=modalities,
+                                        video_frame_size=video_frame_size,
                                         video_buffer_frame_size=video_buffer_frame_size,
                                         verbose=verbose)
-        self.video_frame_size = video_frame_size
 
     def get_data_sources(self) -> List[DataSource]:
         video_filenames = self.list_videos_filenames()
@@ -169,7 +169,7 @@ def main():
                                                            # Landmarks("../shape_predictor_68_face_landmarks.dat")
                                                        ]
                                                    ),
-                                        video_frame_size=(160, 160),
+                                        video_frame_size=(128, 128),
                                         video_buffer_frame_size=(1080//4, 1920//4),  # for Faces/Landmarks
                                         # video_buffer_frame_size=(160, 160),
                                         )

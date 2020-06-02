@@ -1,19 +1,14 @@
-import numpy as np
 import os
 import csv
-import cv2
 from tqdm import tqdm
 import argparse
 import subprocess
 import pytube
 from pytube.exceptions import VideoUnavailable, RegexMatchError
-from pytube.monostate import Monostate
 from urllib.error import HTTPError, URLError
 from typing import Dict, Tuple, List, Union, Optional
 
 from modalities import ModalityCollection
-from modalities.utils import write_video_with_audio
-from datasets.data_readers import VideoReader, AudioReader
 from datasets.tfrecord_builders import TFRecordBuilder, DataSource
 
 
@@ -32,9 +27,9 @@ class AudioSetTFRB(TFRecordBuilder):
                                            video_frequency=video_frequency,
                                            audio_frequency=audio_frequency,
                                            modalities=modalities,
+                                           video_frame_size=video_frame_size,
                                            video_buffer_frame_size=video_buffer_frame_size,
                                            verbose=verbose)
-        self.video_frame_size = video_frame_size
 
     def get_data_sources(self) -> List[DataSource]:
         videos_folder = os.path.join(self.dataset_path, "videos")

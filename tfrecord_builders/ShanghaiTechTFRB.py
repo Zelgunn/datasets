@@ -20,9 +20,9 @@ class ShanghaiTechTFRB(TFRecordBuilder):
                                                audio_frequency=None,
                                                modalities=modalities,
                                                labels_frequency=video_frequency,
+                                               video_frame_size=video_frame_size,
                                                video_buffer_frame_size=video_buffer_frame_size,
                                                verbose=verbose)
-        self.video_frame_size = video_frame_size
 
         self.train_videos_folder = os.path.join(self.dataset_path, "training/videos")
         self.test_frames_root_folder = os.path.join(self.dataset_path, "testing/frames")
@@ -92,7 +92,7 @@ if __name__ == "__main__":
                                                         RawVideo(),
                                                     ]
                                                 ),
-                                                video_frame_size=(856//2, 480//2),
-                                                video_buffer_frame_size=(856//2, 480//2)
+                                                video_frame_size=(128, 128),
+                                                video_buffer_frame_size=(128, 128),
                                                 )
     avenue_tf_record_builder.build()

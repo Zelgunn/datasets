@@ -64,6 +64,7 @@ class VideoBuilder(ModalityBuilder):
                 frame = cv2.resize(frame, dsize=tuple(reversed(frame_size)))
         if len(frame.shape) == 2:
             frame = np.expand_dims(frame, axis=-1)
+
         return frame
 
     def resize_frames(self,

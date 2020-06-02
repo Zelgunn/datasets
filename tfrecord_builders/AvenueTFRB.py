@@ -22,9 +22,9 @@ class AvenueTFRB(TFRecordBuilder):
                                          audio_frequency=None,
                                          modalities=modalities,
                                          labels_frequency=video_frequency,
+                                         video_frame_size=video_frame_size,
                                          video_buffer_frame_size=video_buffer_frame_size,
                                          verbose=verbose)
-        self.video_frame_size = video_frame_size
 
     def get_data_sources(self) -> List[DataSource]:
         subsets_lengths = {"testing": 21, "training": 16}
@@ -79,7 +79,7 @@ if __name__ == "__main__":
                                                   RawVideo(),
                                               ]
                                           ),
-                                          video_frame_size=(640//2, 360//2),
-                                          video_buffer_frame_size=(640//2, 360//2),
+                                          video_frame_size=(128, 128),
+                                          video_buffer_frame_size=(128, 128),
                                           )
     avenue_tf_record_builder.build()

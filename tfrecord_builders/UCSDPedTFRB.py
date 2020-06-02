@@ -21,9 +21,9 @@ class UCSDPedTFRB(TFRecordBuilder):
                                           audio_frequency=None,
                                           modalities=modalities,
                                           labels_frequency=video_frequency,
+                                          video_frame_size=video_frame_size,
                                           video_buffer_frame_size=video_buffer_frame_size,
                                           verbose=verbose)
-        self.video_frame_size = video_frame_size
 
     def get_sample_count(self, subset: str) -> int:
         subset_folder = os.path.join(self.dataset_path, subset)
@@ -155,14 +155,14 @@ class UCSDPedTFRB(TFRecordBuilder):
 
 if __name__ == "__main__":
     ucsd_tf_record_builder = UCSDPedTFRB(dataset_path="../datasets/ucsd/ped2",
-                                         shard_duration=5.0,
+                                         shard_duration=1.0,
                                          video_frequency=10,
                                          modalities=ModalityCollection(
-                                                     [
-                                                         RawVideo(),
-                                                     ]
-                                                 ),
-                                         video_frame_size=(160, 160),
-                                         video_buffer_frame_size=(160, 160),
+                                             [
+                                                 RawVideo(),
+                                             ]
+                                         ),
+                                         video_frame_size=(128, 128),
+                                         video_buffer_frame_size=(128, 128),
                                          )
-    ucsd_tf_record_builder.build()
+    ucsd_tf_record_builder.build(core_count=6)

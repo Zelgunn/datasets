@@ -14,6 +14,7 @@ from datasets.data_readers import AudioReader
 from datasets.data_readers.VideoReader import VideoReaderProto
 from datasets.labels_builders import LabelsBuilder
 from misc_utils.math_utils import join_two_distributions_statistics
+from misc_utils.general import list_dir_recursive
 
 
 class DataSource(object):
@@ -108,6 +109,7 @@ class TFRecordBuilder(object):
                  video_frequency: Optional[Union[int, float]],
                  audio_frequency: Optional[Union[int, float]],
                  modalities: ModalityCollection,
+                 video_frame_size: Tuple[int, int],
                  labels_frequency: Union[int, float] = None,
                  video_buffer_frame_size: Tuple[int, int] = None,
                  verbose=1):
@@ -121,12 +123,18 @@ class TFRecordBuilder(object):
         self.labels_frequency = labels_frequency
         self.modalities = modalities
         self.video_buffer_frame_size = video_buffer_frame_size
+        self.video_frame_size = video_frame_size
         self.verbose = verbose
 
     def get_data_sources(self) -> List[DataSource]:
         raise NotImplementedError("`get_dataset_sources` should be defined for subclasses.")
 
+    def clear_tfrecords(self):
+        for file in list_dir_recursive(self.dataset_path, ".tfrecord"):
+            os.remove(file)
+
     def build(self, core_count=6):
+        self.clear_tfrecords()
         data_sources = self.get_data_sources()
 
         subsets_dict: Dict[str, List[str]] = {"Train": [], "Test": []}
@@ -175,15 +183,11 @@ class TFRecordBuilder(object):
             working_builders = remaining_builders
 
         tfrecords_config = {
-            "modalities": self.modalities.get_config(),
-            "shard_duration": self.shard_duration,
-            "video_frequency": self.video_frequency,
-            "audio_frequency": self.audio_frequency,
+            **self.get_config(),
             "subsets": subsets_dict,
             "statistics": builders_outputs.to_dict(),
         }
 
-        # TODO : Merge previous tfrecords_config with new when adding new modalities
         with open(os.path.join(self.dataset_path, tfrecords_config_filename), 'w') as file:
             json.dump(tfrecords_config, file)
 
@@ -195,7 +199,6 @@ class TFRecordBuilder(object):
 
         modality_builder = BuildersList(builders=builders)
 
-        # TODO : Delete previous .tfrecords
         shard_count = modality_builder.get_shard_count()
         labels_iterator = LabelsBuilder(data_source.labels_source,
                                         shard_count=shard_count,
@@ -275,3 +278,14 @@ class TFRecordBuilder(object):
             builders.append(audio_builder)
 
         return builders
+
+    def get_config(self) -> Dict[str, Any]:
+        return {
+            "shard_duration": self.shard_duration,
+            "video_frequency": self.video_frequency,
+            "audio_frequency": self.audio_frequency,
+            "modalities": self.modalities.get_config(),
+            "video_frame_size": self.video_frame_size,
+            "video_buffer_frame_size": self.video_buffer_frame_size,
+            "labels_frequency": self.labels_frequency,
+        }

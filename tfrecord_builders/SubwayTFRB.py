@@ -24,6 +24,7 @@ class SubwayTFRB(TFRecordBuilder):
                                          video_frequency=video_frequency,
                                          audio_frequency=audio_frequency,
                                          modalities=modalities,
+                                         video_frame_size=video_frame_size,
                                          video_buffer_frame_size=video_buffer_frame_size,
                                          verbose=verbose)
         if version is None:
@@ -33,7 +34,6 @@ class SubwayTFRB(TFRecordBuilder):
                                  format(dataset_path))
 
         self.version = version
-        self.video_frame_size = video_frame_size
         self.use_extended_labels = use_extended_labels
 
     @staticmethod
@@ -272,7 +272,7 @@ known_subway_configs = {
 
 
 if __name__ == "__main__":
-    subway_tf_record_builder = SubwayTFRB(dataset_path="../datasets/subway/exit",
+    subway_tf_record_builder = SubwayTFRB(dataset_path="../datasets/subway/entrance",
                                           shard_duration=1.28,
                                           video_frequency=25,
                                           audio_frequency=None,
@@ -281,8 +281,8 @@ if __name__ == "__main__":
                                                   RawVideo(),
                                               ]
                                           ),
-                                          video_frame_size=(512//2, 384//2),
-                                          video_buffer_frame_size=(512//2, 384//2),
+                                          video_frame_size=(128, 128),
+                                          video_buffer_frame_size=(128, 128),
                                           use_extended_labels=True,
                                           )
     subway_tf_record_builder.build()

@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 import os
 import copy
-from typing import Dict, Tuple, Optional, List, Union
+from typing import Dict, Tuple, Optional, List, Union, Generator
 
 from datasets.loaders import DatasetConfig, SingleSetConfig
 from modalities import Modality, ModalityCollection, Pattern
@@ -72,7 +72,7 @@ class SubsetLoader(object):
                                                                                                    seed=seed),
                               num_parallel_calls=k)
 
-        dataset = dataset.map(self.normalize_modalities, num_parallel_calls=k)
+        # dataset = dataset.map(self.normalize_modalities, num_parallel_calls=k)
         # dataset = dataset.map(self.standardize_modalities, num_parallel_calls=k)
         dataset = dataset.map(pattern.apply, num_parallel_calls=k)
 
@@ -115,29 +115,97 @@ class SubsetLoader(object):
     def make_source_browser(self,
                             pattern: Pattern,
                             source_index: int,
-                            stride: int) -> tf.data.Dataset:
-        shards_per_sample: int = self.config.compute_shards_per_sample(pattern)
+                            stride: int
+                            ) -> Generator:
         source_folder = self.subset_folders[source_index]
-        generator = self.make_browser_filepath_generator(source_folder, shards_per_sample, pattern)
-        dataset = tf.data.Dataset.from_generator(generator,
+        shards_per_sample: int = self.config.compute_shards_per_sample(pattern)
+
+        dataset = self.make_browser_dataset(pattern=pattern, source_folder=source_folder)
+
+        generator = self.browser_generator(dataset=dataset, shards_per_sample=shards_per_sample,
+                                           pattern=pattern, stride=stride)
+
+        return generator
+
+    def make_browser_dataset(self,
+                             pattern: Pattern,
+                             source_folder: str
+                             ) -> tf.data.Dataset:
+
+        filepath_generator = self.make_browser_filepath_generator(source_folder, pattern)
+        dataset = tf.data.Dataset.from_generator(filepath_generator,
                                                  output_types=tf.string,
                                                  output_shapes=())
-
         dataset = tf.data.TFRecordDataset(dataset)
         dataset = dataset.batch(pattern.modalities_per_sample).prefetch(1)
         dataset = dataset.map(lambda serialized_shard: self.parse_shard(serialized_shard, pattern))
 
-        dataset = dataset.batch(shards_per_sample)
-        dataset = dataset.map(lambda shards, shard_sizes:
-                              self.join_shards_and_extract_all(shards, shard_sizes, pattern, stride))
+        # dataset = dataset.batch(shards_per_sample)
+        # dataset = dataset.map(lambda shards, shard_sizes:
+        #                       self.join_shards_and_extract_all(shards, shard_sizes, pattern, stride=1))
 
-        dataset = dataset.unbatch()
+        # dataset = dataset.unbatch()
         # dataset = dataset.map(self.standardize_modalities)
-        # dataset = dataset.map(self.normalize_modalities)
-        dataset = dataset.map(pattern.apply)
-        dataset = dataset.batch(1)
+        # dataset = dataset.map(pattern.apply)
+        # dataset = dataset.batch(1)
 
         return dataset
+
+    def browser_generator(self,
+                          dataset: tf.data.Dataset,
+                          shards_per_sample: int,
+                          pattern: Pattern,
+                          stride: int,
+                          ):
+        modality_ids = pattern.labeled_ids
+
+        unbatched_shards: Dict[str, List[tf.Tensor]] = {modality_id: [] for modality_id in modality_ids}
+        unbatched_shards_sizes: Dict[str, List[tf.Tensor]] = {modality_id: [] for modality_id in modality_ids}
+        shards: Optional[Dict[str, tf.Tensor]] = None
+        shards_sizes: Optional[Dict[str, tf.Tensor]] = None
+
+        for modalities_shard, shard_sizes in dataset:
+            stored_shards_count = len(unbatched_shards[modality_ids[0]])
+
+            # region (Re)Fill with next shard(s)
+            if stored_shards_count < shards_per_sample:
+                for modality_id in unbatched_shards:
+                    unbatched_shards[modality_id].append(modalities_shard[modality_id])
+                    if modality_id != "labels":
+                        unbatched_shards_sizes[modality_id].append(shard_sizes[modality_id])
+                stored_shards_count += 1
+
+                if stored_shards_count >= shards_per_sample:
+                    shards, shards_sizes = self.batch_shards(unbatched_shards, unbatched_shards_sizes)
+                else:
+                    continue
+            # endregion
+
+            first_shard_size = unbatched_shards_sizes[modality_ids[0]][0].numpy()
+            for i in range(first_shard_size):
+                offset = i / first_shard_size
+                joint_shards = self.join_shards(shards, shards_sizes, offset, pattern)
+                joint_shards = pattern.apply(joint_shards)
+                yield joint_shards
+
+            for modality_id in unbatched_shards:
+                unbatched_shards[modality_id].pop(0)
+                if modality_id != "labels":
+                    unbatched_shards_sizes[modality_id].pop(0)
+
+        shards, shards_sizes = self.batch_shards(unbatched_shards, unbatched_shards_sizes)
+        remaining_length = sum(unbatched_shards_sizes[modality_ids[0]]).numpy()
+        sample_length = pattern.flattened[0].length
+        remaining_iterations = remaining_length - sample_length + 1
+
+        for i in range(remaining_iterations):
+            offset = i / (remaining_iterations - 1)
+            joint_shards = self.join_shards(shards, shards_sizes, offset, pattern)
+            joint_shards = pattern.apply(joint_shards)
+            *data, labels = joint_shards
+            # labels = tf.pad(labels, paddings=[[0, 1], [0, 0]], constant_values=1.0)
+            joint_shards = (*data, labels)
+            yield joint_shards
 
     # endregion
 
@@ -160,23 +228,16 @@ class SubsetLoader(object):
                 source_index = generator_random_state.randint(len(folders))
                 source_folder = folders[source_index]
                 files = []
-                shards_count = None
+
+                shards_count = SubsetLoader.get_shards_count(source_folder, modality_ids)
+                if shards_count < shards_per_sample:
+                    raise RuntimeError("shards_count ({}) < shards_per_sample ({}). "
+                                       "You don't have enough samples.".
+                                       format(shards_count, shards_per_sample))
+
                 for modality_id in modality_ids:
-                    folder = os.path.join(source_folder, modality_id)
-
-                    modality_files = [os.path.join(folder, file)
-                                      for file in os.listdir(folder) if file.endswith(".tfrecord")]
-
+                    modality_files = SubsetLoader.get_modality_files(source_folder, modality_id)
                     files.append(modality_files)
-                    if shards_count is None:
-                        shards_count = len(modality_files)
-                    elif shards_count != len(modality_files):
-                        raise ValueError("Modalities don't have the same number of shards in "
-                                         "{}.".format(folder))
-                    elif shards_count < shards_per_sample:
-                        raise RuntimeError("shards_count ({}) < shards_per_sample ({}). "
-                                           "You don't have enough samples.".
-                                           format(shards_count, shards_per_sample))
 
                 offset = generator_random_state.randint(shards_count - shards_per_sample + 1)
                 for shard_index in range(offset, offset + shards_per_sample):
@@ -202,31 +263,22 @@ class SubsetLoader(object):
         return probability_map
 
     @staticmethod
-    def make_browser_filepath_generator(source_folder: str,
-                                        shards_per_sample: int,
-                                        pattern: Pattern):
-        modality_ids = list(pattern.modality_ids) + ["labels"]
+    def make_browser_filepath_generator(source_folder: str, pattern: Pattern):
+        modality_ids = pattern.labeled_ids
+        modality_count = len(modality_ids)
 
         # noinspection DuplicatedCode
         def generator():
             files = []
-            shards_count = None
+            shards_count = SubsetLoader.get_shards_count(source_folder, modality_ids)
+
             for modality_id in modality_ids:
-                modality_folder = os.path.join(source_folder, modality_id)
-                modality_files = [os.path.join(modality_folder, file)
-                                  for file in os.listdir(modality_folder) if file.endswith(".tfrecord")]
+                modality_files = SubsetLoader.get_modality_files(source_folder, modality_id)
                 files.append(modality_files)
 
-                if shards_count is None:
-                    shards_count = len(modality_files)
-                elif shards_count != len(modality_files):
-                    raise ValueError("Modalities don't have the same number of shards in "
-                                     "{}.".format(modality_folder))
-
-            for shard_index in range(shards_count - shards_per_sample + 1):
-                for i in range(shards_per_sample):
-                    for modality_index in range(len(files)):
-                        yield files[modality_index][shard_index + i]
+            for i in range(shards_count):
+                for modality_index in range(modality_count):
+                    yield files[modality_index][i]
 
         return generator
 
@@ -475,6 +527,42 @@ class SubsetLoader(object):
     # endregion
 
     # region Utility
+    @staticmethod
+    def get_shards_count(source_folder: str, modality_ids: List[str]):
+        shards_count = None
+        for modality_id in modality_ids:
+            modality_files = SubsetLoader.get_modality_files(source_folder, modality_id)
+
+            if shards_count is None:
+                shards_count = len(modality_files)
+            elif shards_count != len(modality_files):
+                raise ValueError("Modalities don't have the same number of shards in "
+                                 "{}.".format(source_folder))
+
+        return shards_count
+
+    @staticmethod
+    def get_modality_files(source_folder: str, modality_id: str):
+        modality_folder = os.path.join(source_folder, modality_id)
+        modality_files = [os.path.join(modality_folder, file)
+                          for file in os.listdir(modality_folder)
+                          if file.endswith(".tfrecord")]
+        return modality_files
+
+    @staticmethod
+    def batch_shards(unbatched_shards: Dict[str, List[tf.Tensor]],
+                     unbatched_shards_sizes: Dict[str, List[tf.Tensor]]
+                     ) -> Tuple[Dict[str, tf.Tensor], Dict[str, tf.Tensor]]:
+
+        shards = {}
+        shards_sizes = {}
+        for modality_id in unbatched_shards:
+            shards[modality_id] = tf.stack(unbatched_shards[modality_id], axis=0)
+            if modality_id != "labels":
+                shards_sizes[modality_id] = tf.stack(unbatched_shards_sizes[modality_id], axis=0)
+
+        return shards, shards_sizes
+
     def get_batch(self, batch_size: int, pattern: Pattern, seed):
         dataset = self.make_tf_dataset(pattern, seed=seed)
         dataset = dataset.batch(batch_size)
@@ -491,6 +579,7 @@ class SubsetLoader(object):
         with tf.name_scope("timestamps_labels_to_frame_labels"):
             timestamps = tf.convert_to_tensor(timestamps, dtype=tf.float32)  # shape : [batch_size, pairs_count, 2]
             frame_count = tf.convert_to_tensor(frame_count, dtype=tf.int32)  # shape : []
+            frame_count_float = tf.cast(frame_count, tf.float32)
 
             batch_size, timestamps_per_sample, _ = timestamps.shape
             epsilon = tf.constant(1e-4, dtype=tf.float32, name="epsilon")  # shape : []
@@ -501,9 +590,9 @@ class SubsetLoader(object):
             delta = tf.abs(ends - starts)  # shape : [batch_size, frame_count, pairs_count]
             labels_are_not_equal = delta > epsilon  # shape : [batch_size, frame_count, pairs_count]
 
-            frame_ids = tf.range(frame_count, dtype=tf.float32)  # shape : [frame_count]
+            frame_ids = tf.range(frame_count_float, dtype=tf.float32)  # shape : [frame_count]
             frame_ids = tf.reshape(frame_ids, [1, frame_count, 1])  # shape : [1, frame_count, 1]
-            frame_duration = 1.0 / tf.cast(frame_count, tf.float32)  # shape : []
+            frame_duration = 1.0 / frame_count_float  # shape : []
             start_time = frame_ids * frame_duration  # shape : [1, frame_count, 1]
             end_times = start_time + frame_duration  # shape : [1, frame_count, 1]
 
