@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 import os
 import copy
-from typing import Dict, Tuple, Optional, List, Union, Generator
+from typing import Dict, Tuple, Optional, List, Union, Generator, Callable
 
 from datasets.loaders import DatasetConfig, SingleSetConfig
 from modalities import Modality, ModalityCollection, Pattern
@@ -46,6 +46,8 @@ class SubsetLoader(object):
                         pattern: Pattern,
                         seed,
                         subset_folders: List[str] = None,
+                        batch_size: int = None,
+                        prefetch_size: int = None,
                         ) -> tf.data.Dataset:
         if subset_folders is None:
             subset_folders = self.subset_folders
@@ -76,6 +78,15 @@ class SubsetLoader(object):
         # dataset = dataset.map(self.standardize_modalities, num_parallel_calls=k)
         dataset = dataset.map(pattern.apply, num_parallel_calls=k)
 
+        if batch_size is not None:
+            dataset = dataset.batch(batch_size)
+
+            if pattern.batch_processor is not None:
+                dataset = dataset.map(pattern.batch_processor, num_parallel_calls=k)
+
+        if prefetch_size is not None:
+            dataset = dataset.prefetch(prefetch_size)
+
         return dataset
 
     def make_tf_datasets_splits(self,
@@ -85,7 +96,7 @@ class SubsetLoader(object):
                                 seed,
                                 subset_folders: List[str] = None,
                                 ) -> Tuple[tf.data.Dataset, Optional[tf.data.Dataset]]:
-        if split <= 0.0 or split >= 1.0:
+        if (split <= 0.0) or (split >= 1.0):
             raise ValueError("Split must be strictly between 0.0 and 1.0, found {}.".format(split))
 
         if subset_folders is None:
@@ -93,7 +104,11 @@ class SubsetLoader(object):
         subset_folders = copy.copy(subset_folders)
 
         if len(subset_folders) == 1:
-            return self.make_tf_dataset(pattern, seed=seed, subset_folders=subset_folders), None
+            train_dataset = self.make_tf_dataset(pattern, seed=seed,
+                                                 subset_folders=subset_folders,
+                                                 batch_size=batch_size)
+            validation_dataset = None
+            return train_dataset, validation_dataset
 
         train_count = int_ceil(len(subset_folders) * split)
         np.random.RandomState(seed=seed).shuffle(subset_folders)
@@ -101,12 +116,13 @@ class SubsetLoader(object):
         if train_count == len(subset_folders):
             train_count = len(subset_folders) - 1
 
-        train_dataset = self.make_tf_dataset(pattern, seed=seed, subset_folders=subset_folders[:train_count])
-        validation_dataset = self.make_tf_dataset(pattern, seed=seed, subset_folders=subset_folders[train_count:])
+        train_folders = subset_folders[:train_count]
+        validation_folders = subset_folders[train_count:]
 
-        train_dataset = train_dataset.batch(batch_size).prefetch(-1)
-        if validation_dataset is not None:
-            validation_dataset = validation_dataset.batch(batch_size)
+        train_dataset = self.make_tf_dataset(pattern, seed=seed, subset_folders=train_folders,
+                                             batch_size=batch_size, prefetch_size=-1)
+        validation_dataset = self.make_tf_dataset(pattern, seed=seed, subset_folders=validation_folders,
+                                                  batch_size=batch_size)
 
         print("Train set : {} folders | Validation set : {} folders."
               .format(train_count, len(subset_folders) - train_count))
@@ -146,8 +162,6 @@ class SubsetLoader(object):
 
         # dataset = dataset.unbatch()
         # dataset = dataset.map(self.standardize_modalities)
-        # dataset = dataset.map(pattern.apply)
-        # dataset = dataset.batch(1)
 
         return dataset
 
@@ -564,8 +578,7 @@ class SubsetLoader(object):
         return shards, shards_sizes
 
     def get_batch(self, batch_size: int, pattern: Pattern, seed):
-        dataset = self.make_tf_dataset(pattern, seed=seed)
-        dataset = dataset.batch(batch_size)
+        dataset = self.make_tf_dataset(pattern, seed=seed, batch_size=batch_size)
         results = None
         for results in dataset:
             break
