@@ -172,8 +172,8 @@ def download_youtube_video(youtube_id: str,
                            start_seconds: float,
                            end_seconds: float
                            ) -> bool:
-    if not video_available(youtube_id):
-        return False
+    # if not video_available(youtube_id):
+    #     return False
 
     urls = get_youtube_download_urls(youtube_id)
 
