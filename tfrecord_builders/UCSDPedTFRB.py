@@ -1,4 +1,5 @@
 import os
+import argparse
 from typing import Tuple, List, Union, Optional
 
 from modalities import ModalityCollection, RawVideo
@@ -153,8 +154,16 @@ class UCSDPedTFRB(TFRecordBuilder):
     # endregion
 
 
-if __name__ == "__main__":
-    ucsd_tf_record_builder = UCSDPedTFRB(dataset_path="../datasets/ucsd/ped2",
+def main():
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("--dataset_path", default="../datasets/ucsd/ped1")
+    arg_parser.add_argument("--core_count", default=6, type=int)
+
+    args = arg_parser.parse_args()
+    dataset_path: str = args.dataset_path
+    core_count: int = args.core_count
+
+    ucsd_tf_record_builder = UCSDPedTFRB(dataset_path=dataset_path,
                                          shard_duration=1.0,
                                          video_frequency=10,
                                          modalities=ModalityCollection(
@@ -165,4 +174,8 @@ if __name__ == "__main__":
                                          video_frame_size=(128, 128),
                                          video_buffer_frame_size=(128, 128),
                                          )
-    ucsd_tf_record_builder.build(core_count=6)
+    ucsd_tf_record_builder.build(core_count=core_count)
+
+
+if __name__ == "__main__":
+    main()

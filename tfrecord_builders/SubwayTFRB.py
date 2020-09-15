@@ -1,5 +1,5 @@
 import os
-from typing import Tuple, List, Union, Optional, NamedTuple
+from typing import Tuple, List, Union, Optional, NamedTuple, Dict, Any
 from enum import IntEnum
 
 from modalities import ModalityCollection, RawVideo
@@ -17,8 +17,9 @@ class SubwayTFRB(TFRecordBuilder):
                  video_frame_size: Tuple[int, int],
                  video_buffer_frame_size: Tuple[int, int],
                  version: "SubwayVideo" = None,
-                 use_extended_labels=True,
-                 verbose=1):
+                 verbose=1,
+                 labels_source=None,
+                 ):
         super(SubwayTFRB, self).__init__(dataset_path=dataset_path,
                                          shard_duration=shard_duration,
                                          video_frequency=video_frequency,
@@ -34,7 +35,7 @@ class SubwayTFRB(TFRecordBuilder):
                                  format(dataset_path))
 
         self.version = version
-        self.use_extended_labels = use_extended_labels
+        self.labels_source = labels_source
 
     @staticmethod
     def guess_version(dataset_path: str) -> Optional["SubwayVideo"]:
@@ -58,7 +59,7 @@ class SubwayTFRB(TFRecordBuilder):
         # region train_data_sources
         train_data_sources = []
         train_target_path = os.path.join(self.dataset_path, "Train")
-        for start, end in self.video_config.get_train_splits(self.use_extended_labels):
+        for start, end in self.video_config.get_train_splits():
             train_video_reader = VideoReaderProto(video_filepath,
                                                   start=start / self.video_frequency,
                                                   end=end / self.video_frequency,
@@ -82,7 +83,7 @@ class SubwayTFRB(TFRecordBuilder):
                                              end=self.video_config.testing_seconds,
                                              frequency=self.video_frequency
                                              )
-        test_labels = self.video_config.get_anomaly_timestamps_in_seconds(self.use_extended_labels)
+        test_labels = self.video_config.get_anomaly_timestamps_in_seconds()
         test_target_path = os.path.join(self.dataset_path, "Test")
         if not os.path.isdir(test_target_path):
             os.makedirs(test_target_path)
@@ -100,6 +101,15 @@ class SubwayTFRB(TFRecordBuilder):
     def video_config(self) -> "SubwayVideoConfig":
         return known_subway_configs[self.version]
 
+    def get_config(self) -> Dict[str, Any]:
+        base_config = super(SubwayTFRB, self).get_config()
+        config = {
+            **base_config,
+            "version": self.version,
+            "labels_source": self.labels_source,
+        }
+        return config
+
 
 class SubwayVideo(IntEnum):
     EXIT = 0
@@ -109,13 +119,19 @@ class SubwayVideo(IntEnum):
     MALL3 = 4
 
 
-class SubwayVideoConfig(NamedTuple):
-    video_filename: str
-    training_minutes: float
-    fps: int
-    anomaly_timestamps: List[Tuple[int, int]]
-    extended_anomaly_timestamps: List[Tuple[int, int]] = None
-    testing_minutes: float = None
+class SubwayVideoConfig(object):
+    def __init__(self,
+                 video_filename: str,
+                 training_minutes: float,
+                 fps: int,
+                 anomaly_timestamps: List[Tuple[int, int]],
+                 testing_minutes: float = None,
+                 ):
+        self.video_filename = video_filename
+        self.training_minutes = training_minutes
+        self.fps = fps
+        self.anomaly_timestamps = anomaly_timestamps
+        self.testing_minutes = testing_minutes
 
     @property
     def training_seconds(self) -> float:
@@ -137,24 +153,18 @@ class SubwayVideoConfig(NamedTuple):
             return None
         return int(self.fps * (self.testing_seconds + self.training_seconds))
 
-    def get_anomaly_timestamps(self, use_extended: bool):
-        if use_extended and self.extended_anomaly_timestamps is None:
-            use_extended = False
-
-        return self.extended_anomaly_timestamps if use_extended else self.anomaly_timestamps
-
-    def get_anomaly_timestamps_in_seconds(self, use_extended: bool) -> List[Tuple[float, float]]:
+    def get_anomaly_timestamps_in_seconds(self) -> List[Tuple[float, float]]:
         in_seconds = [
             (
                 (start - self.training_frames) / self.fps,
                 (end - self.training_frames) / self.fps
             )
-            for start, end in self.get_anomaly_timestamps(use_extended)
+            for start, end in self.anomaly_timestamps
         ]
         return in_seconds
 
-    def get_train_splits(self, use_extended: bool):
-        anomaly_timestamps = self.get_anomaly_timestamps(use_extended)
+    def get_train_splits(self):
+        anomaly_timestamps = self.anomaly_timestamps
         anomaly_splits = []
         previous_end = 0
         for start, end in anomaly_timestamps:
@@ -194,6 +204,22 @@ original_entrance_anomaly_timestamps = [
     (118235, 118270), (118700, 119100), (119285, 119300), (124700, 124850), (128025, 128100), (130480, 130675),
 ]
 
+kim_entrance_anomaly_timestamps = [
+    (2175, 2650), (4120, 5560),
+    (12820, 13025), (16120, 16530), (17020, 17650),
+    (20130, 20620), (21680, 21840), (27750, 29950), (33350, 35415), (39390, 39575),
+    (41000, 41150), (41350, 41500), (44775, 44975), (45075, 47000), (52275, 53425),
+    (57375, 57500), (59800, 59900), (67450, 68050), (68950, 69350), (69520, 70200),
+    (70770, 72200), (73000, 73075), (73450, 74110), (80300, 80500), (79420, 80510),
+    (81130, 81770), (82210, 82415), (82490, 87150), (87300, 88940), (89570, 89870),
+    (90000, 91000), (92025, 92075), (92200, 92375), (92450, 93690), (94255, 95450),
+    (96675, 96750),
+    (100050, 100575), (106125, 106575), (111300, 111645), (114895, 115025),
+    (115450, 115550), (115735, 116025), (116110, 116525), (117465, 117625),
+    (117675, 117950), (118135, 118275), (118585, 119125), (119250, 119325),
+    (124645, 124850), (128000, 128125), (130350, 130725)
+]
+
 ours_entrance_anomaly_timestamps = [
     (4120, 5450), (27700, 29850),
     (39400, 39575), (67675, 67925), (67975, 68050),
@@ -209,22 +235,7 @@ entrance_config = SubwayVideoConfig(
     training_minutes=20.0,
     testing_minutes=75.5,
     fps=25,
-    anomaly_timestamps=original_entrance_anomaly_timestamps,
-    extended_anomaly_timestamps=[
-        (2175, 2650), (4120, 5560),
-        (12820, 13025), (16120, 16530), (17020, 17650),
-        (20130, 20620), (21680, 21840), (27750, 29950), (33350, 35415), (39390, 39575),
-        (41000, 41150), (41350, 41500), (44775, 44975), (45075, 47000), (52275, 53425),
-        (57375, 57500), (59800, 59900), (67450, 68050), (68950, 69350), (69520, 70200),
-        (70770, 72200), (73000, 73075), (73450, 74110), (80300, 80500), (79420, 80510),
-        (81130, 81770), (82210, 82415), (82490, 87150), (87300, 88940), (89570, 89870),
-        (90000, 91000), (92025, 92075), (92200, 92375), (92450, 93690), (94255, 95450),
-        (96675, 96750),
-        (100050, 100575), (106125, 106575), (111300, 111645), (114895, 115025),
-        (115450, 115550), (115735, 116025), (116110, 116525), (117465, 117625),
-        (117675, 117950), (118135, 118275), (118585, 119125), (119250, 119325),
-        (124645, 124850), (128000, 128125), (130350, 130725)
-    ]
+    anomaly_timestamps=kim_entrance_anomaly_timestamps
 )
 
 mall1_config = SubwayVideoConfig(
@@ -268,10 +279,23 @@ known_subway_configs = {
     SubwayVideo.MALL2: mall2_config,
     SubwayVideo.MALL3: mall3_config,
 }
+
+
 # endregion
 
 
-if __name__ == "__main__":
+def main():
+    labels_source = "ours"
+
+    if labels_source == "original":
+        entrance_config.anomaly_timestamps = original_entrance_anomaly_timestamps
+    elif labels_source == "kim":
+        entrance_config.anomaly_timestamps = kim_entrance_anomaly_timestamps
+    elif labels_source == "ours":
+        entrance_config.anomaly_timestamps = ours_entrance_anomaly_timestamps
+    else:
+        raise ValueError()
+
     subway_tf_record_builder = SubwayTFRB(dataset_path="../datasets/subway/entrance",
                                           shard_duration=1.28,
                                           video_frequency=25,
@@ -283,6 +307,10 @@ if __name__ == "__main__":
                                           ),
                                           video_frame_size=(128, 128),
                                           video_buffer_frame_size=(128, 128),
-                                          use_extended_labels=True,
+                                          labels_source=labels_source
                                           )
     subway_tf_record_builder.build()
+
+
+if __name__ == "__main__":
+    main()
