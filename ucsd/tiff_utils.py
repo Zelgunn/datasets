@@ -16,5 +16,7 @@ def update_tiffs(source_path: str, target_path: str):
         dir_name = os.path.dirname(target_image_path)
         if not os.path.isdir(dir_name):
             os.makedirs(dir_name)
+        # noinspection PyUnresolvedReferences
         image = skimage.io.imread(image_path)
+        # noinspection PyUnresolvedReferences
         skimage.io.imsave(target_image_path, image)

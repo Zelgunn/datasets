@@ -1,5 +1,5 @@
 import os
-from typing import Tuple, List, Union, Optional, NamedTuple, Dict, Any
+from typing import Tuple, List, Union, Optional, Dict, Any
 from enum import IntEnum
 
 from modalities import ModalityCollection, RawVideo

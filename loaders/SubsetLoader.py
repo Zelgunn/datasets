@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 import os
 import copy
-from typing import Dict, Tuple, Optional, List, Union, Generator, Callable
+from typing import Dict, Tuple, Optional, List, Union, Generator
 
 from datasets.loaders import DatasetConfig, SingleSetConfig
 from modalities import Modality, ModalityCollection, Pattern

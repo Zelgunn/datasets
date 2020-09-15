@@ -1,10 +1,10 @@
 from typing import Dict
 
-from datasets.loaders import SubsetLoader, DatasetConfig
+from datasets.loaders import SubsetLoader, SingleSetConfig
 
 
 class DatasetLoader(object):
-    def __init__(self, config: DatasetConfig):
+    def __init__(self, config: SingleSetConfig):
         self.config = config
 
         self.subsets: Dict[str, SubsetLoader] = {}

@@ -278,6 +278,15 @@ def is_image_format_supported(image_name: str) -> bool:
     return False
 
 
+def one_hot_pixels(frame: np.ndarray) -> np.ndarray:
+    frame_shape = frame.shape
+    indexes = np.reshape(frame, [-1])
+    result = np.zeros([frame.size, 256], np.int32)
+    result[np.arange(frame.size), indexes] = 1
+    result = np.reshape(result, [*frame_shape, 256])
+    return result
+
+
 def main():
     video_reader = VideoReader(r"..\datasets\ucsd\ped2\Test\Test001_gt")
     print(video_reader.image_collection)
