@@ -48,41 +48,43 @@ class SubsetLoader(object):
                         subset_folders: List[str] = None,
                         batch_size: int = None,
                         prefetch_size: int = None,
+                        parallel_cores=None,
                         ) -> tf.data.Dataset:
         if subset_folders is None:
             subset_folders = self.subset_folders
         subset_folders = copy.copy(subset_folders)
 
-        k = os.cpu_count()
-        # k = None
+        if isinstance(parallel_cores, str) and parallel_cores == "auto":
+            parallel_cores = os.cpu_count()
+
         shards_per_sample = self.config.compute_shards_per_sample(pattern)
 
         generator = self.make_shard_filepath_generator(subset_folders, pattern, shards_per_sample, seed=seed)
         dataset = tf.data.Dataset.from_generator(generator,
                                                  output_types=tf.string,
                                                  output_shapes=())
-        dataset = tf.data.TFRecordDataset(dataset, num_parallel_reads=1 if k is None else k)
+        dataset = tf.data.TFRecordDataset(dataset, num_parallel_reads=parallel_cores)
         dataset = dataset.batch(pattern.modalities_per_sample).prefetch(1)
 
         dataset = dataset.map(lambda serialized_shards: self.parse_shard(serialized_shards, pattern),
-                              num_parallel_calls=k)
+                              num_parallel_calls=parallel_cores)
 
         dataset = dataset.batch(shards_per_sample)
         dataset = dataset.map(lambda shards, shards_sizes: self.join_shards_and_extract_one_random(shards,
                                                                                                    shards_sizes,
                                                                                                    pattern,
                                                                                                    seed=seed),
-                              num_parallel_calls=k)
+                              num_parallel_calls=parallel_cores)
 
         # dataset = dataset.map(self.normalize_modalities, num_parallel_calls=k)
         # dataset = dataset.map(self.standardize_modalities, num_parallel_calls=k)
-        dataset = dataset.map(pattern.apply, num_parallel_calls=k)
+        dataset = dataset.map(pattern.apply, num_parallel_calls=parallel_cores)
 
         if batch_size is not None:
             dataset = dataset.batch(batch_size)
 
             if pattern.batch_processor is not None:
-                dataset = dataset.map(pattern.batch_processor, num_parallel_calls=k)
+                dataset = dataset.map(pattern.batch_processor, num_parallel_calls=parallel_cores)
 
         if prefetch_size is not None:
             dataset = dataset.prefetch(prefetch_size)
@@ -95,6 +97,7 @@ class SubsetLoader(object):
                                 batch_size: int,
                                 seed,
                                 subset_folders: List[str] = None,
+                                parallel_cores=None,
                                 ) -> Tuple[tf.data.Dataset, Optional[tf.data.Dataset]]:
         if (split <= 0.0) or (split >= 1.0):
             raise ValueError("Split must be strictly between 0.0 and 1.0, found {}.".format(split))
@@ -106,7 +109,8 @@ class SubsetLoader(object):
         if len(subset_folders) == 1:
             train_dataset = self.make_tf_dataset(pattern, seed=seed,
                                                  subset_folders=subset_folders,
-                                                 batch_size=batch_size)
+                                                 batch_size=batch_size,
+                                                 parallel_cores=parallel_cores)
             validation_dataset = None
             return train_dataset, validation_dataset
 
@@ -120,9 +124,9 @@ class SubsetLoader(object):
         validation_folders = subset_folders[train_count:]
 
         train_dataset = self.make_tf_dataset(pattern, seed=seed, subset_folders=train_folders,
-                                             batch_size=batch_size, prefetch_size=-1)
+                                             batch_size=batch_size, prefetch_size=-1, parallel_cores=parallel_cores)
         validation_dataset = self.make_tf_dataset(pattern, seed=seed, subset_folders=validation_folders,
-                                                  batch_size=batch_size)
+                                                  batch_size=batch_size, parallel_cores=parallel_cores)
 
         print("Train set : {} folders | Validation set : {} folders."
               .format(train_count, len(subset_folders) - train_count))
@@ -573,8 +577,8 @@ class SubsetLoader(object):
 
         return shards, shards_sizes
 
-    def get_batch(self, batch_size: int, pattern: Pattern, seed):
-        dataset = self.make_tf_dataset(pattern, seed=seed, batch_size=batch_size)
+    def get_batch(self, batch_size: int, pattern: Pattern, seed, parallel_cores=None):
+        dataset = self.make_tf_dataset(pattern, seed=seed, batch_size=batch_size, parallel_cores=parallel_cores)
         results = None
         for results in dataset:
             break
