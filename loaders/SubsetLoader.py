@@ -98,9 +98,13 @@ class SubsetLoader(object):
                                 seed,
                                 subset_folders: List[str] = None,
                                 parallel_cores=None,
+                                split_folders: Dict = None,
                                 ) -> Tuple[tf.data.Dataset, Optional[tf.data.Dataset]]:
         if (split <= 0.0) or (split >= 1.0):
             raise ValueError("Split must be strictly between 0.0 and 1.0, found {}.".format(split))
+
+        if (split_folders is not None) and (len(split_folders) > 0):
+            raise ValueError("When provided, `split_folders` must be an empty dict, which will be filled.")
 
         if subset_folders is None:
             subset_folders = self.subset_folders
@@ -112,6 +116,8 @@ class SubsetLoader(object):
                                                  batch_size=batch_size,
                                                  parallel_cores=parallel_cores)
             validation_dataset = None
+            split_folders["train_dataset"] = subset_folders
+            split_folders["validation_dataset"] = []
             return train_dataset, validation_dataset
 
         train_count = int_ceil(len(subset_folders) * split)
@@ -130,6 +136,9 @@ class SubsetLoader(object):
 
         print("Train set : {} folders | Validation set : {} folders."
               .format(train_count, len(subset_folders) - train_count))
+
+        split_folders["train_dataset"] = train_folders
+        split_folders["validation_dataset"] = validation_folders
         return train_dataset, validation_dataset
 
     def make_source_browser(self,
