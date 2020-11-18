@@ -4,6 +4,7 @@ import os
 import json
 import time
 import datetime
+import shutil
 from multiprocessing import Pool
 from typing import Union, Tuple, List, Dict, Type, Optional, Any
 
@@ -289,3 +290,14 @@ class TFRecordBuilder(object):
             "video_buffer_frame_size": self.video_buffer_frame_size,
             "labels_frequency": self.labels_frequency,
         }
+
+
+def copy_tree_no_tfrecord(source, destination):
+    if os.path.isdir(source):
+        shutil.copytree(source, destination, ignore=ignore_tfrecords)
+    else:
+        shutil.copy2(source, destination)
+
+
+def ignore_tfrecords(_, names):
+    return [name for name in names if name.endswith(".tfrecord")]

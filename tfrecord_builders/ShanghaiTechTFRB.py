@@ -83,16 +83,24 @@ class ShanghaiTechTFRB(TFRecordBuilder):
         return frames_folders
 
 
+def get_shanghaitech_tfrecord_builder():
+    return ShanghaiTechTFRB(dataset_path="../datasets/shanghaitech",
+                            shard_duration=1.28,
+                            video_frequency=25,
+                            modalities=ModalityCollection(
+                                [
+                                    RawVideo(),
+                                ]
+                            ),
+                            video_frame_size=(128, 128),
+                            video_buffer_frame_size=(128, 128),
+                            )
+
+
+def main():
+    shanghaitech_tf_record_builder = get_shanghaitech_tfrecord_builder()
+    shanghaitech_tf_record_builder.build()
+
+
 if __name__ == "__main__":
-    avenue_tf_record_builder = ShanghaiTechTFRB(dataset_path="../datasets/shanghaitech",
-                                                shard_duration=1.28,
-                                                video_frequency=25,
-                                                modalities=ModalityCollection(
-                                                    [
-                                                        RawVideo(),
-                                                    ]
-                                                ),
-                                                video_frame_size=(128, 128),
-                                                video_buffer_frame_size=(128, 128),
-                                                )
-    avenue_tf_record_builder.build()
+    main()

@@ -1,5 +1,3 @@
-import tensorflow as tf
-import tensorflow_probability as tfp
 import numpy as np
 import cv2
 from PIL import Image
@@ -7,8 +5,6 @@ import os
 from tqdm import tqdm
 from enum import IntEnum
 from typing import Union, List, Optional, Iterator, Tuple
-
-from misc_utils.general import int_floor, int_ceil
 
 
 class VideoReaderMode(IntEnum):
@@ -161,8 +157,11 @@ class VideoReader(object):
 
     # region Properties
     @property
-    def frame_count(self):
+    def frame_count(self) -> int:
         return self.end - self.start
+
+    def __len__(self):
+        return self.frame_count
 
     @property
     def frame_height(self):
@@ -228,11 +227,54 @@ class VideoReader(object):
         if frame_size is None:
             frame_size = (self.frame_width, self.frame_height)
 
-        out = cv2.VideoWriter(target_path, cv2.VideoWriter_fourcc(*"MJPG"), fps, frame_size)
+        video_writer = cv2.VideoWriter(target_path, cv2.VideoWriter_fourcc(*"MJPG"), fps, frame_size)
 
         for frame in tqdm(self, total=self.frame_count):
-            out.write(frame)
-        out.release()
+            video_writer.write(frame)
+        video_writer.release()
+
+    def export_video(self,
+                     target_path: str,
+                     frames: Union["VideoReader", np.ndarray] = None,
+                     frame_size: Tuple[int, int] = None,
+                     image_extension: str = None):
+        if frames is None:
+            frames = self
+
+        if self.mode == VideoReaderMode.IMAGE_COLLECTION:
+            target_folder = target_path
+        else:
+            target_folder = os.path.dirname(target_path)
+        if not os.path.exists(target_folder):
+            os.makedirs(target_folder)
+
+        if self.mode == VideoReaderMode.CV_VIDEO_CAPTURE:
+            fps = int(self.frequency)
+            frame_size = self.frame_size if frame_size is None else frame_size
+            frame_size = tuple(reversed(frame_size))
+            video_writer = cv2.VideoWriter(target_path, cv2.VideoWriter_fourcc(*"MJPG"), fps, frame_size)
+            for frame in frames:
+                video_writer.write(frame)
+            video_writer.release()
+        elif self.mode == VideoReaderMode.IMAGE_COLLECTION:
+            image_extension = ".jpg" if image_extension is None else image_extension
+            image_extension = "." + image_extension if not image_extension.startswith(".") else image_extension
+            if not hasattr(frames, "__len__"):
+                frames = [frame for frame in frames]
+            digit_count = int(np.log10(len(frames)))
+            frame_path = os.path.join(target_path, "frame_{:0" + str(digit_count) + "d}" + image_extension)
+
+            for i, frame in enumerate(frames):
+                frame = Image.fromarray(frame)
+                frame.save(frame_path.format(i))
+        elif self.mode == VideoReaderMode.NP_ARRAY:
+            if not isinstance(frames, np.ndarray):
+                if not isinstance(frames, list):
+                    frames = [frame for frame in frames]
+                frames = np.asarray(frames)
+            np.save(target_path, frames)
+        else:
+            raise RuntimeError("Unsupported mode, could not export video.")
 
     def close(self):
         if self.mode == VideoReaderMode.CV_VIDEO_CAPTURE:
@@ -244,91 +286,6 @@ class VideoReader(object):
         else:
             frames = [cv2.resize(frame, frame_size, interpolation=cv2.INTER_NEAREST) for frame in self]
         return np.asarray(frames)
-
-    def extract_most_likely_background(self, buffer_size=None, k=1, frame_size=None):
-        frame_size = self.frame_size if frame_size is None else frame_size
-
-        frames = self.read_all()
-        frames = tf.convert_to_tensor(frames)
-
-        if frames.shape.rank < 4:
-            frames = tf.expand_dims(frames, -1)
-
-        frames = tf.image.resize(frames, frame_size)
-        votes_shape = frames.shape[1:] + [256]
-        votes = tf.zeros(shape=votes_shape, dtype=tf.int32)
-
-        if frames.dtype != tf.int32:
-            if (frames.dtype == tf.float32) and (tf.reduce_all(frames <= 1.0)):
-                frames *= 255.0
-            frames = tf.cast(frames, tf.int32)
-
-        buffer_size = frames.shape[0] if buffer_size is None else buffer_size
-        for j in range(0, frames.shape[0], buffer_size):
-            frames_votes = tf.one_hot(frames[j:j + buffer_size], depth=256, dtype=tf.int32)
-            frames_votes = tf.reduce_sum(frames_votes, axis=0)
-            votes += frames_votes
-
-        k_votes_weights, k_votes = tf.math.top_k(votes, k, sorted=False)
-        k_votes_weights, k_votes = tf.cast(k_votes_weights, tf.float32), tf.cast(k_votes, tf.float32)
-        k_votes_weights /= tf.reduce_sum(k_votes_weights, axis=-1, keepdims=True)
-        background = tf.reduce_sum(k_votes * k_votes_weights, axis=-1) / 255.0
-
-        return background
-
-    def remove_most_likely_background(self, buffer_size=None, frame_size=None, k=1):
-        frame_size = self.frame_size if frame_size is None else frame_size
-
-        frames = self.read_all()
-        frames = tf.convert_to_tensor(frames)
-
-        if frames.shape.rank < 4:
-            frames = tf.expand_dims(frames, -1)
-
-        frames = tf.image.resize(frames, frame_size)
-        votes_shape = frames.shape[1:] + [256]
-        votes = tf.zeros(shape=votes_shape, dtype=tf.int32)
-
-        if frames.dtype != tf.int32:
-            if (frames.dtype == tf.float32) and (tf.reduce_all(frames <= 1.0)):
-                frames *= 255.0
-            frames = tf.cast(frames, tf.int32)
-
-        buffer_size = frames.shape[0] if buffer_size is None else buffer_size
-        for j in range(0, frames.shape[0], buffer_size):
-            frames_votes = tf.one_hot(frames[j:j + buffer_size], depth=256, dtype=tf.int32)
-            frames_votes = tf.reduce_sum(frames_votes, axis=0)
-            votes += frames_votes
-
-        _, k_votes = tf.math.top_k(votes, k, sorted=False)
-        k_votes = tf.one_hot(k_votes, depth=256) != 0
-        k_votes = tf.reduce_any(k_votes, axis=-2)
-        k_votes = tf.expand_dims(k_votes, axis=0)
-
-        frequency_filter = tf.ones(shape=[3, 3, 1, 1], dtype=tf.int32)
-        gaussian_filter = get_gaussian_kernel(size=5, std=1.0)
-        gaussian_filter = tf.expand_dims(tf.expand_dims(gaussian_filter, axis=-1), axis=-1)
-
-        output_frames = []
-        for j in range(0, frames.shape[0], buffer_size):
-            buffer = frames[j:j + buffer_size]
-            frames_votes = tf.one_hot(buffer, depth=256) != 0
-            vote_in_top_k = tf.logical_and(k_votes, frames_votes)
-            vote_in_top_k = tf.reduce_any(vote_in_top_k, axis=-1)  # for color depth
-            if vote_in_top_k.shape[-1] > 1:
-                vote_in_top_k = tf.reduce_any(vote_in_top_k, axis=-1, keepdims=True)  # for rgb
-
-            mask = 1 - tf.cast(vote_in_top_k, tf.int32)
-            mask = tf.nn.conv2d(mask, frequency_filter, strides=1, padding="SAME") > 3
-            mask = tf.cast(mask, tf.float32)
-            mask = tf.nn.conv2d(mask, gaussian_filter, strides=1, padding="SAME")
-
-            masked_frames = tf.cast(buffer, tf.float32) * mask / 255.0
-            output_frames.append(masked_frames)
-
-        output_frames = tf.concat(output_frames, axis=0)
-
-        return output_frames
 
 
 def infer_video_reader_mode(video_source: Union[str, cv2.VideoCapture, np.ndarray, List[str]]):
@@ -381,20 +338,6 @@ def one_hot_pixels(frame: np.ndarray) -> np.ndarray:
     result[np.arange(frame.size), indexes] = 1
     result = np.reshape(result, [*frame_shape, 256])
     return result
-
-
-def get_gaussian_kernel(size: int, std: float) -> tf.Tensor:
-    """Makes 2D gaussian Kernel for convolution."""
-
-    distribution = tfp.distributions.Normal(0.0, std)
-
-    left_size = int_floor(size / 2)
-    right_size = int_ceil(size / 2)
-    values = distribution.prob(tf.range(start=-left_size, limit=right_size, dtype=tf.float32))
-    gaussian_kernel = tf.einsum('i,j->ij', values, values)
-    gaussian_kernel / tf.reduce_sum(gaussian_kernel)
-    gaussian_kernel = tf.constant(gaussian_kernel)
-    return gaussian_kernel
 
 
 def main():
