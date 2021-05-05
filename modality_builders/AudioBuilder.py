@@ -18,8 +18,6 @@ class AudioBuilder(ModalityBuilder):
 
         if not isinstance(audio_reader, AudioReader):
             audio_reader = AudioReader(audio_reader)
-        else:
-            audio_reader = audio_reader
 
         self.reader = audio_reader
 

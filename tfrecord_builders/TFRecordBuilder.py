@@ -6,12 +6,12 @@ import time
 import datetime
 import shutil
 from multiprocessing import Pool
-from typing import Union, Tuple, List, Dict, Type, Optional, Any
+from typing import Union, Tuple, List, Dict, Type, Optional, Any, Iterable
 
 from modalities import Modality, ModalityCollection
 from modalities.utils import float_list_feature
-from datasets.modality_builders import ModalityBuilder, VideoBuilder, AudioBuilder, BuildersList
-from datasets.data_readers import AudioReader
+from datasets.modality_builders import ModalityBuilder, VideoBuilder, AudioBuilder, BuildersList, PacketBuilder
+from datasets.data_readers import AudioReader, PacketReader
 from datasets.data_readers.VideoReader import VideoReaderProto
 from datasets.labels_builders import LabelsBuilder
 from misc_utils.math_utils import join_two_distributions_statistics
@@ -25,7 +25,8 @@ class DataSource(object):
                  subset_name: str,
                  video_source: Union[str, np.ndarray, List[str], VideoReaderProto] = None,
                  video_frame_size: Tuple[int, int] = None,
-                 audio_source: Union[AudioReader, str, np.ndarray] = None
+                 audio_source: Union[AudioReader, str, np.ndarray] = None,
+                 packet_source: Union[PacketReader, str] = None,
                  ):
         self.labels_source = labels_source
         self.target_path = target_path
@@ -34,6 +35,7 @@ class DataSource(object):
         self.video_source = video_source
         self.video_frame_size = video_frame_size
         self.audio_source = audio_source
+        self.packet_source = packet_source
 
 
 class ModalityShardStatistics(object):
@@ -70,9 +72,13 @@ class ModalityShardStatistics(object):
 
 
 class BuilderOutput(object):
-    def __init__(self):
-        self.modalities_statistics: Dict[Type[Modality], ModalityShardStatistics] = {}
-        self.max_labels_size = 0
+    def __init__(self,
+                 modalities_statistics: Dict[Type[Modality], ModalityShardStatistics] = None,
+                 max_labels_size=0):
+        if modalities_statistics is None:
+            modalities_statistics = {}
+        self.modalities_statistics = modalities_statistics
+        self.max_labels_size = max_labels_size
 
     def shard_update(self,
                      shard_statistics: Dict[Type[Modality], ModalityShardStatistics],
@@ -110,15 +116,13 @@ class TFRecordBuilder(object):
                  video_frequency: Optional[Union[int, float]],
                  audio_frequency: Optional[Union[int, float]],
                  modalities: ModalityCollection,
-                 video_frame_size: Tuple[int, int],
+                 video_frame_size: Tuple[int, int] = None,
                  labels_frequency: Union[int, float] = None,
                  video_buffer_frame_size: Tuple[int, int] = None,
                  verbose=1):
 
         self.dataset_path = dataset_path
         self.shard_duration = shard_duration
-        if video_frequency is None and audio_frequency is None:
-            raise ValueError("You must specify at least the frequency for either Video or Audio, got None and None")
         self.video_frequency = video_frequency
         self.audio_frequency = audio_frequency
         self.labels_frequency = labels_frequency
@@ -126,6 +130,8 @@ class TFRecordBuilder(object):
         self.video_buffer_frame_size = video_buffer_frame_size
         self.video_frame_size = video_frame_size
         self.verbose = verbose
+
+        self.build_metadata: Dict[Iterable, Dict[str, Any]] = {}
 
     def get_data_sources(self) -> List[DataSource]:
         raise NotImplementedError("`get_dataset_sources` should be defined for subclasses.")
@@ -138,26 +144,20 @@ class TFRecordBuilder(object):
         self.clear_tfrecords()
         data_sources = self.get_data_sources()
 
-        subsets_dict: Dict[str, List[str]] = {"Train": [], "Test": []}
-
         data_sources_count = len(data_sources)
         start_time = time.time()
 
         builder_pool = Pool(core_count)
         builders = []
-        builders_outputs = BuilderOutput()
+        builders_infos: Dict[Any, Tuple[str, str]] = {}
+        builders_outputs: Dict[Any, BuilderOutput] = {}
 
         for data_source in data_sources:
-            # region Fill subsets_dict with folders containing shards
-            target_path = os.path.relpath(data_source.target_path, self.dataset_path)
-            if data_source.subset_name in subsets_dict:
-                subsets_dict[data_source.subset_name].append(target_path)
-            else:
-                subsets_dict[data_source.subset_name] = [target_path]
-            # endregion
-
             builder = builder_pool.apply_async(self.build_one, (data_source,))
             builders.append(builder)
+
+            target_path = os.path.relpath(data_source.target_path, self.dataset_path)
+            builders_infos[builder] = (data_source.subset_name, target_path)
 
         working_builders = builders
         while len(working_builders) > 0:
@@ -166,7 +166,7 @@ class TFRecordBuilder(object):
             for builder in working_builders:
                 if builder.ready():
                     builder_output: BuilderOutput = builder.get()
-                    builders_outputs.update(builder_output)
+                    builders_outputs[builder] = builder_output
                 else:
                     remaining_builders.append(builder)
 
@@ -183,10 +183,26 @@ class TFRecordBuilder(object):
 
             working_builders = remaining_builders
 
+        # region Fill subsets_dict with folders containing shards
+        subsets_dict: Dict[str, List[str]] = {}
+        statistics: Dict[str, Dict[str, Dict[str, Any]]] = {}  # value = statistics[subset][source][stat_name]
+
+        for builder in builders:
+            subset_name, target_path = builders_infos[builder]
+            builder_output = builders_outputs[builder]
+
+            if subset_name not in subsets_dict:
+                subsets_dict[subset_name] = []
+                statistics[subset_name] = {}
+
+            subsets_dict[subset_name].append(target_path)
+            statistics[subset_name][target_path] = builder_output.to_dict()
+        # endregion
+
         tfrecords_config = {
             **self.get_config(),
             "subsets": subsets_dict,
-            "statistics": builders_outputs.to_dict(),
+            "statistics": statistics,
         }
 
         with open(os.path.join(self.dataset_path, tfrecords_config_filename), 'w') as file:
@@ -196,7 +212,8 @@ class TFRecordBuilder(object):
         builders = self.make_builders(video_source=data_source.video_source,
                                       video_frame_size=data_source.video_frame_size,
                                       video_buffer_frame_size=self.video_buffer_frame_size,
-                                      audio_source=data_source.audio_source)
+                                      audio_source=data_source.audio_source,
+                                      packet_source=data_source.packet_source)
 
         modality_builder = BuildersList(builders=builders)
 
@@ -225,6 +242,7 @@ class TFRecordBuilder(object):
                 encoded_features = modality_type.encode_to_tfrecord_feature(modality_value)
                 self.write_features_to_tfrecord(encoded_features, data_source.target_path, i, modality_type.id())
 
+                # noinspection PyArgumentList
                 shard_statistics[modality_type] = ModalityShardStatistics(
                     min_value=modality_value.min(),
                     max_value=modality_value.max(),
@@ -258,6 +276,7 @@ class TFRecordBuilder(object):
                       video_frame_size: Tuple[int, int],
                       audio_source: Union[AudioReader, str, np.ndarray],
                       video_buffer_frame_size: Tuple[int, int],
+                      packet_source: Union[PacketReader, str],
                       ):
 
         builders: List[ModalityBuilder] = []
@@ -278,7 +297,33 @@ class TFRecordBuilder(object):
                                          audio_reader=audio_source)
             builders.append(audio_builder)
 
+        if PacketBuilder.supports_any(self.modalities):
+            packets_mins = self.get_build_metadata(packet_source, "packets_mins")
+            packets_maxs = self.get_build_metadata(packet_source, "packets_maxs")
+            packet_builder = PacketBuilder(self.shard_duration,
+                                           modalities=self.modalities,
+                                           packet_reader=packet_source,
+                                           packets_mins=packets_mins,
+                                           packets_maxs=packets_maxs)
+            builders.append(packet_builder)
+
         return builders
+
+    def get_build_metadata(self, reader: Iterable, key: str) -> Optional[Any]:
+        if reader in self.build_metadata:
+            if key in self.build_metadata[reader]:
+                return self.build_metadata[reader][key]
+        return None
+
+    def add_build_metadata(self, reader: Iterable, key: str, value: Any):
+        if reader not in self.build_metadata:
+            self.build_metadata[reader] = {}
+
+        if key in self.build_metadata[reader]:
+            if value is not self.build_metadata[reader][key]:
+                raise ValueError("Key {} already in `build_metadata` for source {}.".format(key, reader))
+        else:
+            self.build_metadata[reader][key] = value
 
     def get_config(self) -> Dict[str, Any]:
         return {

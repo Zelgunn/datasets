@@ -2,13 +2,16 @@ import tensorflow as tf
 from abc import abstractmethod
 import json
 import os
-from typing import Dict, List, Any, Tuple, Union, Type
+from typing import Dict, List, Any, Tuple, Union, Type, Callable
 
 from datasets.tfrecord_builders import tfrecords_config_filename
+from datasets.modality_builders.PacketBuilder import DEFAULT_PACKET_FREQUENCY
 from modalities import Modality, ModalityCollection, Pattern
 from modalities import RawVideo, Faces, OpticalFlow, DoG, Landmarks
 from modalities import RawAudio, MelSpectrogram
+from modalities import NetworkPacket
 from misc_utils.general import int_ceil
+from misc_utils.math_utils import join_two_distributions_statistics
 
 
 def get_shard_count(sample_length: int,
@@ -34,7 +37,7 @@ class DatasetConfig(object):
                  shard_duration: float,
                  video_frequency,
                  audio_frequency,
-                 statistics: Dict[str, Any],
+                 statistics: Dict[str, Dict[str, Dict[str, Any]]],
                  output_range: Tuple[float, float],
                  ):
         self.modalities = modalities
@@ -44,16 +47,8 @@ class DatasetConfig(object):
         self.statistics = statistics
         self.output_range = output_range
 
-        self.modalities_ranges: Dict[str, Tuple[tf.Tensor, tf.Tensor]] = {}
-        self.modalities_mean: Dict[str, tf.Tensor] = {}
-        self.modalities_stddev: Dict[str, tf.Tensor] = {}
-        for modality_id in self.modalities_statistics:
-            modality_min = get_config_constant(self.modalities_statistics, modality_id, "min")
-            modality_max = get_config_constant(self.modalities_statistics, modality_id, "max")
-            self.modalities_ranges[modality_id] = (modality_min, modality_max)
-
-            self.modalities_mean[modality_id] = get_config_constant(self.modalities_statistics, modality_id, "mean")
-            self.modalities_stddev[modality_id] = get_config_constant(self.modalities_statistics, modality_id, "stddev")
+        self._max_labels_size = None
+        self._flatten_statistics = None
 
     @abstractmethod
     def get_subset_folders(self,
@@ -85,6 +80,8 @@ class DatasetConfig(object):
         elif isinstance(modality, MelSpectrogram):
             shard_size = modality.get_output_frame_count(self.shard_duration * self.audio_frequency,
                                                          self.audio_frequency)
+        elif isinstance(modality, NetworkPacket):
+            shard_size = DEFAULT_PACKET_FREQUENCY * self.shard_duration
         else:
             raise NotImplementedError(modality.id())
 
@@ -130,9 +127,18 @@ class DatasetConfig(object):
         self.modalities.filter(shared_modalities)
 
         shared_ids = [modality.id() for modality in shared_modalities]
+        statistics_changed = False
         for modality_id in self.modalities_ids:
             if modality_id not in shared_ids:
-                self.modalities_statistics.pop(modality_id)
+                for subset_statistics in self.statistics.values():
+                    for source_statistics in subset_statistics.values():
+                        modalities_statistics: Dict[str, Any] = source_statistics["modalities"]
+                        if modality_id in modalities_statistics:
+                            modalities_statistics.pop(modality_id)
+                            statistics_changed = True
+
+        if statistics_changed:
+            self._clear_statistics_cache()
 
     @staticmethod
     def load_tf_records_config(tfrecords_config_folder: str) -> Dict[str, Any]:
@@ -146,12 +152,46 @@ class DatasetConfig(object):
         return self.modalities.ids()
 
     @property
-    def modalities_statistics(self) -> Dict[str, Dict[str, float]]:
-        return self.statistics["modalities"]
+    def flatten_statistics(self) -> List[Dict[str, Any]]:
+        if self._flatten_statistics is None:
+            self._flatten_statistics = []
+            for subset_statistics in self.statistics.values():
+                for source_statistics in subset_statistics.values():
+                    self._flatten_statistics.append(source_statistics)
+
+        return self._flatten_statistics
 
     @property
     def max_labels_size(self) -> int:
-        return int(self.statistics["max_labels_size"])
+        if self._max_labels_size is None:
+            labels_size = [source_statistics["max_labels_size"] for source_statistics in self.flatten_statistics]
+            self._max_labels_size = max(labels_size)
+
+        return self._max_labels_size
+
+    def get_subset_modality_size(self, subset_name: str, modality: Union[Modality, Type[Modality], str]) -> int:
+        if isinstance(modality, Modality):
+            modality = modality.id()
+        elif isinstance(modality, type) and issubclass(modality, Modality):
+            modality = modality.id()
+
+        size = 0
+        subset_statistics = self.statistics[subset_name]
+
+        for source_statistics in subset_statistics.values():
+            modalities_statistics: Dict[str, Any] = source_statistics["modalities"]
+            for current_modality_id, modality_statistics in modalities_statistics.items():
+                if current_modality_id == modality:
+                    size += modality_statistics["size"]
+        return size
+
+    def get_subset_reference_size(self, subset_name: str) -> int:
+        reference_modality = list(self.modalities.types())[0]
+        return self.get_subset_modality_size(subset_name, reference_modality)
+
+    def _clear_statistics_cache(self):
+        self._max_labels_size = None
+        self._flatten_statistics = None
 
 
 def main():

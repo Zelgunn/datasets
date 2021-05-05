@@ -1,15 +1,17 @@
+from abc import abstractmethod, ABC
 from typing import Dict
 
 from datasets.loaders import SubsetLoader, SingleSetConfig
 
 
-class DatasetLoader(object):
-    def __init__(self, config: SingleSetConfig):
-        self.config = config
-
+class DatasetLoader(ABC):
+    def __init__(self):
         self.subsets: Dict[str, SubsetLoader] = {}
-        for subset_name in config.subsets:
-            self.subsets[subset_name] = SubsetLoader(config, subset_name)
+        self.init_subsets()
+
+    @abstractmethod
+    def init_subsets(self):
+        raise NotImplementedError("`init_subsets` must be implemented in subclasses.")
 
     @property
     def train_subset(self) -> SubsetLoader:
@@ -17,7 +19,7 @@ class DatasetLoader(object):
 
     @property
     def test_subset(self) -> SubsetLoader:
-        if len(self.subsets["Test"].subset_folders) > 0:
+        if self.subsets["Test"].sample_count > 0:
             return self.subsets["Test"]
         else:
             return self.subsets["Train"]

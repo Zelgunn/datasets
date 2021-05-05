@@ -4,7 +4,7 @@ from typing import Tuple, List, Union, Optional
 
 from modalities import ModalityCollection, RawVideo
 from datasets.tfrecord_builders import TFRecordBuilder, DataSource
-from datasets.data_readers import VideoReader
+from datasets.data_readers.VideoReader import VideoReaderProto
 
 
 class UCSDPedTFRB(TFRecordBuilder):
@@ -60,7 +60,7 @@ class UCSDPedTFRB(TFRecordBuilder):
         data_sources = [DataSource(labels_source=sample_labels,
                                    target_path=path,
                                    subset_name=subset,
-                                   video_source=VideoReader(path, frequency=self.video_frequency),
+                                   video_source=VideoReaderProto(path, frequency=self.video_frequency),
                                    video_frame_size=self.video_frame_size)
                         for subset in subsets
                         for path, sample_labels in subsets[subset]]

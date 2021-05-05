@@ -2,4 +2,6 @@ from datasets.loaders.DatasetConfig import DatasetConfig
 from datasets.loaders.SingleSetConfig import SingleSetConfig
 from datasets.loaders.MultiSetConfig import MultiSetConfig
 from datasets.loaders.SubsetLoader import SubsetLoader
+from datasets.loaders.tfrecords.TFRecordSubsetLoader import TFRecordSubsetLoader
 from datasets.loaders.DatasetLoader import DatasetLoader
+from datasets.loaders.tfrecords.TFRecordDatasetLoader import TFRecordDatasetLoader
