@@ -255,7 +255,7 @@ def write_skip_list(filepath: str, skip_list: List[str]):
 
 
 def main():
-    dataset_path = r"..\datasets\audioset"
+    dataset_path = "../datasets/audioset"
     # filters = [
     #     "Speech",
     #     "Male speech, man speaking",
@@ -293,7 +293,6 @@ def main():
                                          ]
                                      ),
                                      video_frame_size=(128, 128),
-                                     # video_buffer_frame_size=(1080 // 4, 1920 // 4),  # for Faces/Landmarks
                                      video_buffer_frame_size=(128, 128),
                                      )
     tf_record_builder.build(core_count=args.core_count)
