@@ -156,7 +156,7 @@ class UCSDPedTFRB(TFRecordBuilder):
 
 def main():
     arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument("--dataset_path", default="../datasets/ucsd/ped1")
+    arg_parser.add_argument("--dataset_path", default="../datasets/ucsd/ped2")
     arg_parser.add_argument("--core_count", default=6, type=int)
 
     args = arg_parser.parse_args()

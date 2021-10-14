@@ -545,6 +545,7 @@ class TFRecordSubsetLoader(SubsetLoader):
         modality_files = [os.path.join(modality_folder, file)
                           for file in os.listdir(modality_folder)
                           if file.endswith(".tfrecord")]
+        modality_files = list(sorted(modality_files))
         return modality_files
 
     @staticmethod
