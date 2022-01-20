@@ -1,4 +1,5 @@
-from datasets.loaders.DatasetLoader import DatasetLoader, SingleSetConfig
+from datasets.loaders.DatasetLoader import DatasetLoader
+from datasets.loaders.SingleSetConfig import SingleSetConfig
 from datasets.loaders.tfrecords.TFRecordSubsetLoader import TFRecordSubsetLoader
 
 

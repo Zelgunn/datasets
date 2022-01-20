@@ -2,7 +2,7 @@ import tensorflow as tf
 from abc import abstractmethod
 import json
 import os
-from typing import Dict, List, Any, Tuple, Union, Type, Callable
+from typing import Dict, List, Any, Tuple, Union, Type
 
 from datasets.tfrecord_builders import tfrecords_config_filename
 from datasets.modality_builders.PacketBuilder import DEFAULT_PACKET_FREQUENCY
@@ -11,7 +11,6 @@ from modalities import RawVideo, Faces, OpticalFlow, DoG, Landmarks
 from modalities import RawAudio, MelSpectrogram
 from modalities import NetworkPacket
 from misc_utils.general import int_ceil
-from misc_utils.math_utils import join_two_distributions_statistics
 
 
 def get_shard_count(sample_length: int,

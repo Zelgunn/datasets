@@ -9,7 +9,7 @@ from enum import IntEnum
 from modalities import ModalityCollection, NetworkPacket
 from datasets.tfrecord_builders import TFRecordBuilder, DataSource
 from datasets.modality_builders.PacketBuilder import DEFAULT_PACKET_FREQUENCY
-from datasets.data_readers import PacketReader
+from datasets.data_readers import KitsunePacketReader
 
 
 class KitsuneDataset(IntEnum):
@@ -72,9 +72,9 @@ class KitsuneTFRB(TFRecordBuilder):
         train_packet_count = self.get_training_packet_count()
 
         train_target_path = os.path.join(self.dataset_path, "Train")
-        train_packet_source = PacketReader(packet_source=self.get_dataset_csv_filepath(),
-                                           discard_first_column=self.discard_first_dataset_column(),
-                                           end=train_packet_count)
+        train_packet_source = KitsunePacketReader(packet_sources=self.get_dataset_csv_filepath(),
+                                                  is_mirai=self.discard_first_dataset_column(),
+                                                  end=train_packet_count)
 
         train_labels = labels[:train_packet_count]
         train_source = DataSource(labels_source=train_labels,
@@ -83,9 +83,9 @@ class KitsuneTFRB(TFRecordBuilder):
                                   packet_source=train_packet_source)
 
         test_target_path = os.path.join(self.dataset_path, "Test")
-        test_packet_source = PacketReader(packet_source=self.get_dataset_csv_filepath(),
-                                          discard_first_column=self.discard_first_dataset_column(),
-                                          start=train_packet_count)
+        test_packet_source = KitsunePacketReader(packet_sources=self.get_dataset_csv_filepath(),
+                                                 is_mirai=self.discard_first_dataset_column(),
+                                                 start=train_packet_count)
         test_labels = labels[train_packet_count:]
         test_source = DataSource(labels_source=test_labels,
                                  target_path=test_target_path,
@@ -95,7 +95,7 @@ class KitsuneTFRB(TFRecordBuilder):
         self.prepare_build_metadata(train_packet_source, test_packet_source)
         return [train_source, test_source]
 
-    def prepare_build_metadata(self, train_packet_reader: PacketReader, test_packet_reader: PacketReader):
+    def prepare_build_metadata(self, train_packet_reader: KitsunePacketReader, test_packet_reader: KitsunePacketReader):
         packets_mins = None
         packets_maxs = None
 

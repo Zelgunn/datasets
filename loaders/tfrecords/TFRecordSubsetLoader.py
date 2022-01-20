@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 import os
 import copy
-from typing import Dict, Tuple, Optional, List, Generator
+from typing import Dict, Tuple, Optional, List, Generator, Union
 
 from datasets.loaders import DatasetConfig, SingleSetConfig
 from datasets.loaders.SubsetLoader import SubsetLoader
@@ -517,6 +517,10 @@ class TFRecordSubsetLoader(SubsetLoader):
     @property
     def sample_names(self) -> List[str]:
         return [os.path.basename(folder) for folder in self.subset_folders]
+
+    @property
+    def sample_shape(self) -> Union[List[str], Tuple[str], tf.TensorShape]:
+        raise NotImplementedError("The property `sample_shape` must be implemented in subclasses.")
 
     @property
     def sample_count(self) -> int:

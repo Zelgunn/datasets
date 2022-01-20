@@ -56,6 +56,11 @@ class SubsetLoader(ABC):
         raise NotImplementedError("The property `sample_names` must be implemented in subclasses.")
 
     @property
+    @abstractmethod
+    def sample_shape(self) -> Union[List[str], Tuple[str], tf.TensorShape]:
+        raise NotImplementedError("The property `sample_shape` must be implemented in subclasses.")
+
+    @property
     def sample_count(self) -> int:
         return len(self.sample_names)
 

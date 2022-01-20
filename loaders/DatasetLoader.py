@@ -1,7 +1,7 @@
 from abc import abstractmethod, ABC
 from typing import Dict
 
-from datasets.loaders import SubsetLoader, SingleSetConfig
+from datasets.loaders import SubsetLoader
 
 
 class DatasetLoader(ABC):

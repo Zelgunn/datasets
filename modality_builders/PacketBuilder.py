@@ -1,5 +1,5 @@
 import numpy as np
-from typing import List, Union, Any, Dict, Type, Tuple
+from typing import List, Dict, Type
 
 from modalities import Modality, ModalityCollection, NetworkPacket
 from datasets.modality_builders import ModalityBuilder
@@ -12,7 +12,7 @@ class PacketBuilder(ModalityBuilder):
     def __init__(self,
                  shard_duration: float,
                  modalities: ModalityCollection,
-                 packet_reader: Union[PacketReader, Any],
+                 packet_reader: PacketReader,
                  packets_mins: np.ndarray,
                  packets_maxs: np.ndarray,
                  ):
@@ -21,7 +21,7 @@ class PacketBuilder(ModalityBuilder):
                                             modalities=modalities)
 
         if not isinstance(packet_reader, PacketReader):
-            packet_reader = PacketReader(packet_reader)
+            raise ValueError("Parameter `packet_reader` must be a sub-class of PacketReader.")
 
         self.reader = packet_reader
         self.packets_mins = packets_mins
